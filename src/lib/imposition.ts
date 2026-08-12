@@ -23,6 +23,18 @@ function positiveInteger(value: number, name: string) {
   return value
 }
 
+function getSidePages(
+  binding: Binding,
+  twoUp: boolean,
+  firstLeaf: number,
+  foldedPages: number[],
+  reverse = false,
+) {
+  if (binding !== "yotsume") return foldedPages
+  const pages = twoUp ? [firstLeaf, firstLeaf + 2] : [firstLeaf]
+  return reverse ? pages.reverse() : pages
+}
+
 export function createImposition({
   binding,
   signatures,
@@ -48,17 +60,13 @@ export function createImposition({
         signature: signature + 1,
         sheet: sheet + 1,
         side: "front",
-        pages: binding === "yotsume"
-          ? twoUp ? [firstLeaf, firstLeaf + 2] : [firstLeaf]
-          : [last - sheet * 2, first + sheet * 2],
+        pages: getSidePages(binding, twoUp, firstLeaf, [last - sheet * 2, first + sheet * 2]),
       })
       sides.push({
         signature: signature + 1,
         sheet: sheet + 1,
         side: "back",
-        pages: binding === "yotsume"
-          ? twoUp ? [firstLeaf + 3, firstLeaf + 1] : [firstLeaf + 1]
-          : [first + sheet * 2 + 1, last - sheet * 2 - 1],
+        pages: getSidePages(binding, twoUp, firstLeaf + 1, [first + sheet * 2 + 1, last - sheet * 2 - 1], true),
       })
     }
   }

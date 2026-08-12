@@ -1,44 +1,47 @@
 // Official screen swatches from https://clairefontaine.eu/en/papers/trophee/#specs
-export const tropheeColors = [
-  { name: "Pearl grey", hex: "#eceade" },
-  { name: "Steel grey", hex: "#dad5d2" },
-  { name: "Cream", hex: "#fef7e4" },
-  { name: "Chamois", hex: "#f4e4c0" },
-  { name: "Caramel", hex: "#c6a477" },
-  { name: "Orange", hex: "#e3aa73" },
-  { name: "Apricot", hex: "#f1cb9c" },
-  { name: "Peach", hex: "#e9bbac" },
-  { name: "Gold", hex: "#f3d068" },
-  { name: "Daffodil", hex: "#fdf69e" },
-  { name: "Canary", hex: "#fbf0b0" },
-  { name: "Salmon", hex: "#f4d8cd" },
-  { name: "Pink", hex: "#f2dcdf" },
-  { name: "Lilac", hex: "#dbd7ee" },
-  { name: "Wild rose", hex: "#de9ec3" },
-  { name: "Lavander", hex: "#a2badc" },
-  { name: "Dark blue", hex: "#b1d5e1" },
-  { name: "Nature green", hex: "#c8e1c4" },
-  { name: "Sky blue", hex: "#73cbf4" },
-  { name: "Blue", hex: "#9fd5f9" },
-  { name: "Jade", hex: "#deeaa4" },
-  { name: "Green", hex: "#d7eaaf" },
-  { name: "Pale green", hex: "#eef7e1" },
-  { name: "Flame", hex: "#e09017" },
-  { name: "Intensive orange", hex: "#cb4e14" },
-  { name: "Coral red", hex: "#c10212" },
-  { name: "Intensive red", hex: "#ac1751" },
-  { name: "Intensive pink", hex: "#d46d9a" },
-  { name: "Intensive Lilac", hex: "#776daa" },
-  { name: "Royal Blue", hex: "#6bb9dd" },
-  { name: "Intensive blue", hex: "#478dc8" },
-  { name: "Intensive yellow", hex: "#ffec02" },
-  { name: "Yellow sunflower", hex: "#e7bb27" },
-  { name: "Intensive green", hex: "#a3bd38" },
-  { name: "Billiard green", hex: "#76a85f" },
-  { name: "Forest green", hex: "#226b4e" },
-  { name: "Black", hex: "#010101" },
-  { name: "Fluo pink", hex: "#c5027c" },
-  { name: "Fluo yellow", hex: "#f6e80d" },
-  { name: "Fluo green", hex: "#b9c932" },
-  { name: "Fluo orange", hex: "#e2a415" },
-] as const
+const swatches = `Pearl grey|#eceade
+Steel grey|#dad5d2
+Cream|#fef7e4
+Chamois|#f4e4c0
+Caramel|#c6a477
+Orange|#e3aa73
+Apricot|#f1cb9c
+Peach|#e9bbac
+Gold|#f3d068
+Daffodil|#fdf69e
+Canary|#fbf0b0
+Salmon|#f4d8cd
+Pink|#f2dcdf
+Lilac|#dbd7ee
+Wild rose|#de9ec3
+Lavander|#a2badc
+Dark blue|#b1d5e1
+Nature green|#c8e1c4
+Sky blue|#73cbf4
+Blue|#9fd5f9
+Jade|#deeaa4
+Green|#d7eaaf
+Pale green|#eef7e1
+Flame|#e09017
+Intensive orange|#cb4e14
+Coral red|#c10212
+Intensive red|#ac1751
+Intensive pink|#d46d9a
+Intensive Lilac|#776daa
+Royal Blue|#6bb9dd
+Intensive blue|#478dc8
+Intensive yellow|#ffec02
+Yellow sunflower|#e7bb27
+Intensive green|#a3bd38
+Billiard green|#76a85f
+Forest green|#226b4e
+Black|#010101
+Fluo pink|#c5027c
+Fluo yellow|#f6e80d
+Fluo green|#b9c932
+Fluo orange|#e2a415`
+
+export const tropheeColors = swatches.split("\n").map((swatch) => {
+  const [name, hex] = swatch.split("|")
+  return { name, hex }
+})

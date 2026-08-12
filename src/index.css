@@ -46,19 +46,51 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-canvas: #edeae1;
+  --color-primary-hover: #3c3933;
+  --color-accent-strong: #a96528;
+  --color-info: #446a72;
+  --color-paper: #fffef9;
+  --color-border-strong: #aaa398;
+  --text-3xs: 0.5rem;
+  --text-2xs: 0.5625rem;
+  --text-caption: 0.625rem;
+  --text-label: 0.6875rem;
+  --text-heading: 1.375rem;
+  --text-display: 1.75rem;
+  --tracking-label-tight: 0.09em;
+  --tracking-label: 0.1em;
+  --tracking-label-wide: 0.11em;
+  --tracking-section: 0.14em;
+  --shadow-book: inset 5px 0 #e7c895;
+  --shadow-paper: 0 18px 34px rgba(55, 49, 35, 0.14);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --radius-book: 2px 8px 8px 2px;
 }
 
 @layer base {
   * { @apply border-border outline-ring/50; }
-  body { @apply m-0 bg-background text-foreground antialiased; }
+  body { @apply m-0 bg-background font-sans text-foreground antialiased; }
   button, input { font: inherit; }
 }
 
 .print-root { display: none; }
+.tab-trigger-height { height: calc(100% - 1px); }
+.transition-input { transition-property: color, box-shadow; }
+
+@media (min-width: 64rem) {
+  .app-grid { grid-template-columns: 292px minmax(0, 1fr); }
+}
+
+@media (min-width: 80rem) {
+  .app-grid {
+    height: calc(100svh - 72px);
+    grid-template-columns: 292px minmax(440px, 1fr) 312px;
+  }
+}
 
 [data-slot="select-content"] {
   --select-x: 0;
@@ -80,7 +112,7 @@
 
 @media print {
   body { background: white; }
-  .screen-app { display: none !important; }
+  .screen-app { display: none; }
   .print-root { display: block; }
   .print-side {
     display: flex;
@@ -98,8 +130,10 @@
     overflow: hidden;
   }
   .print-side[data-layout="full"] .paper-page { width: 100%; }
-  .print-side[data-layout="stacked"] { flex-direction: column; }
+  .print-side[data-layout="stacked"] {
+    flex-direction: column;
+    --page-divider: inset 0 0.12mm #ddd;
+  }
   .print-side[data-layout="stacked"] .paper-page { width: 100%; height: 50%; }
-  .paper-page + .paper-page { box-shadow: inset 0.12mm 0 #ddd; }
-  .print-side[data-layout="stacked"] .paper-page + .paper-page { box-shadow: inset 0 0.12mm #ddd; }
+  .paper-page + .paper-page { box-shadow: var(--page-divider, inset 0.12mm 0 #ddd); }
 }

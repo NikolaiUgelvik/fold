@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react"
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react"
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpRight, BookOpen, Download, Hash, Info, Minus, Plus, Trash2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -21,23 +21,24 @@ import { formatMillimeters, getCenteredPatternBounds, getPaperSize, paperSizes, 
 import { getActivePunchHoleSets, getPageBindingEdge, getPunchHoles, showsPunchHoles, type BindingEdge, type HoleGroup, type HoleSet, type PunchHolePlacement } from "@/lib/punch-holes"
 import { tropheeColors } from "@/lib/trophee-colors"
 
-const numberFonts = [
-  { label: "Georgia", value: "Georgia, serif" },
-  { label: "DM Serif Display", value: '"DM Serif Display", serif' },
-  { label: "Inter", value: "Inter, sans-serif" },
-  { label: "IBM Plex Mono", value: '"IBM Plex Mono", monospace' },
-  { label: "Playfair Display", value: '"Playfair Display", serif' },
-  { label: "Lora", value: "Lora, serif" },
-  { label: "Merriweather", value: "Merriweather, serif" },
-  { label: "Libre Baskerville", value: '"Libre Baskerville", serif' },
-  { label: "Caveat", value: "Caveat, cursive" },
-  { label: "Dancing Script", value: '"Dancing Script", cursive' },
-  { label: "Great Vibes", value: '"Great Vibes", cursive' },
-  { label: "Pinyon Script", value: '"Pinyon Script", cursive' },
-  { label: "Cinzel Decorative", value: '"Cinzel Decorative", serif' },
-] as const
+const numberFonts = `Georgia|Georgia, serif
+DM Serif Display|"DM Serif Display", serif
+Inter|Inter, sans-serif
+IBM Plex Mono|"IBM Plex Mono", monospace
+Playfair Display|"Playfair Display", serif
+Lora|Lora, serif
+Merriweather|Merriweather, serif
+Libre Baskerville|"Libre Baskerville", serif
+Caveat|Caveat, cursive
+Dancing Script|"Dancing Script", cursive
+Great Vibes|"Great Vibes", cursive
+Pinyon Script|"Pinyon Script", cursive
+Cinzel Decorative|"Cinzel Decorative", serif`.split("\n").map((font) => {
+  const [label, value] = font.split("|")
+  return { label, value }
+})
 
-type NumberFont = (typeof numberFonts)[number]["value"]
+type NumberFont = string
 
 interface Settings {
   binding: Binding
@@ -188,23 +189,37 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
   )
 }
 
-function PageSvg({
-  settings,
-  punchHoleSets,
-  logicalPage,
-  paperColor,
-  showPunchHoles,
-  className,
-  ariaLabel,
-}: {
-  settings: Settings
-  punchHoleSets: HoleSet[]
-  logicalPage: number
-  paperColor: string
-  showPunchHoles: boolean
-  className?: string
-  ariaLabel?: string
-}) {
+function getPatternBasics(settings: Settings) {
+  const spacing = settings.pattern === "dots" ? settings.dotSpacing : settings.lineSpacing
+  const majorEvery = settings.pattern === "graph" ? settings.graphMajorEvery : settings.dotMajorEvery
+  const majorSpacing = spacing * majorEvery
+  const majorLineWidth = settings.pattern === "graph" ? settings.graphMajorLineWidth : 0
+  const patternRadius = settings.pattern === "dots" ? settings.dotSize / 2 : Math.max(settings.lineWidth, majorLineWidth) / 2
+  const boundsSpacing = settings.pattern === "graph" && settings.graphCompleteBlocks ? majorSpacing : spacing
+  return { spacing, majorSpacing, patternRadius, boundsSpacing }
+}
+
+function getPageMargins(settings: Settings, bindingEdge: BindingEdge) {
+  return {
+    top: settings.margin,
+    right: settings.margin + (bindingEdge === "right" ? settings.gutterMargin : 0),
+    bottom: settings.margin,
+    left: settings.margin + (bindingEdge === "left" ? settings.gutterMargin : 0),
+  }
+}
+
+function getMajorBounds(settings: Settings, patternStartX: number, patternStartY: number, centeredPatternBounds: ReturnType<typeof getCenteredPatternBounds>, patternRadius: number, majorSpacing: number, patternBounds: ReturnType<typeof getCenteredPatternBounds>) {
+  if (settings.dotMajorEvery <= 0) return patternBounds
+  const majorRadius = settings.dotMajorSize / 2
+  return {
+    x: patternStartX - majorRadius,
+    y: patternStartY - majorRadius,
+    width: Math.floor((centeredPatternBounds.width - patternRadius * 2) / majorSpacing) * majorSpacing + majorRadius * 2,
+    height: Math.floor((centeredPatternBounds.height - patternRadius * 2) / majorSpacing) * majorSpacing + majorRadius * 2,
+  }
+}
+
+function getPageMetrics(settings: Settings, logicalPage: number) {
   const page = displayedPage(settings, logicalPage)
   const pageSize = getPageLayout(settings.paper, settings.binding, settings.yotsumeOrientation, settings.yotsumeTwoUp).page
   const numberEdge = getOuterPageNumberEdge(page)
@@ -212,22 +227,10 @@ function PageSvg({
   const indexEntries = customPage?.type === "index"
     ? parseIndexEntries(customPage.entries).slice(0, Math.floor((pageSize.height - 50) / 9))
     : []
-  const spacing = settings.pattern === "dots" ? settings.dotSpacing : settings.lineSpacing
-  const patternId = useId()
-  const majorPatternId = useId()
-  const majorSpacing = spacing * (settings.pattern === "graph" ? settings.graphMajorEvery : settings.dotMajorEvery)
-  const patternRadius = settings.pattern === "dots"
-    ? settings.dotSize / 2
-    : Math.max(settings.lineWidth, settings.pattern === "graph" ? settings.graphMajorLineWidth : 0) / 2
-  const boundsSpacing = settings.pattern === "graph" && settings.graphCompleteBlocks ? majorSpacing : spacing
+  const { spacing, majorSpacing, patternRadius, boundsSpacing } = getPatternBasics(settings)
   const folded = settings.binding !== "yotsume"
   const bindingEdge = getPageBindingEdge(settings.bindingEdge, logicalPage, folded)
-  const pageMargins = {
-    top: settings.margin,
-    right: settings.margin + (bindingEdge === "right" ? settings.gutterMargin : 0),
-    bottom: settings.margin,
-    left: settings.margin + (bindingEdge === "left" ? settings.gutterMargin : 0),
-  }
+  const pageMargins = getPageMargins(settings, bindingEdge)
   const contentWidth = Math.max(0, pageSize.width - pageMargins.left - pageMargins.right)
   const contentCenterX = pageMargins.left + contentWidth / 2
   const centeredPatternBounds = getCenteredPatternBounds(pageSize, pageMargins, boundsSpacing, patternRadius)
@@ -237,37 +240,17 @@ function PageSvg({
     ? { ...centeredPatternBounds, x: pageMargins.left, width: contentWidth }
     : centeredPatternBounds
   const majorRadius = settings.dotMajorSize / 2
-  const majorBounds = settings.dotMajorEvery > 0
-    ? {
-        x: patternStartX - majorRadius,
-        y: patternStartY - majorRadius,
-        width: Math.floor((centeredPatternBounds.width - patternRadius * 2) / majorSpacing) * majorSpacing + majorRadius * 2,
-        height: Math.floor((centeredPatternBounds.height - patternRadius * 2) / majorSpacing) * majorSpacing + majorRadius * 2,
-      }
-    : patternBounds
+  const majorBounds = getMajorBounds(settings, patternStartX, patternStartY, centeredPatternBounds, patternRadius, majorSpacing, patternBounds)
   const borderX = pageMargins.left + settings.borderWidth / 2
   const borderY = pageMargins.top + settings.borderWidth / 2
-  const punchHoles = getPunchHoles(
-    pageSize,
-    settings.bindingEdge,
-    logicalPage,
-    settings.punchHoleEndInset,
-    punchHoleSets,
-    folded,
-  )
+  return { page, pageSize, numberEdge, customPage, indexEntries, spacing, majorSpacing, patternRadius, boundsSpacing, folded, bindingEdge, pageMargins, contentWidth, contentCenterX, centeredPatternBounds, patternStartX, patternStartY, patternBounds, majorRadius, majorBounds, borderX, borderY }
+}
 
+type PageMetrics = ReturnType<typeof getPageMetrics>
+
+function BasePattern({ settings, metrics, patternId }: { settings: Settings; metrics: PageMetrics; patternId: string }) {
+  const { pageSize, spacing, pageMargins, patternStartX, patternStartY } = metrics
   return (
-    <svg
-      className={className}
-      viewBox={`0 0 ${pageSize.width} ${pageSize.height}`}
-      role={ariaLabel ? "img" : undefined}
-      aria-label={ariaLabel}
-      aria-hidden={ariaLabel ? undefined : true}
-    >
-      <rect width={pageSize.width} height={pageSize.height} fill={paperColor} />
-      {!customPage && settings.pattern !== "blank" && (
-        <>
-          <defs>
             <pattern
               id={patternId}
               patternUnits="userSpaceOnUse"
@@ -299,6 +282,13 @@ function PageSvg({
                 </>
               )}
             </pattern>
+  )
+}
+
+function MajorPatterns({ settings, metrics, majorPatternId }: { settings: Settings; metrics: PageMetrics; majorPatternId: string }) {
+  const { majorSpacing, patternStartX, patternStartY } = metrics
+  return (
+    <>
             {settings.pattern === "dots" && settings.dotMajorEvery > 0 && (
               <pattern
                 id={majorPatternId}
@@ -328,6 +318,19 @@ function PageSvg({
                 />
               </pattern>
             )}
+    </>
+  )
+}
+
+function PagePattern({ settings, metrics, patternId, majorPatternId }: { settings: Settings; metrics: PageMetrics; patternId: string; majorPatternId: string }) {
+  const { pageSize, customPage, spacing, majorSpacing, pageMargins, patternStartX, patternStartY, patternBounds, majorBounds } = metrics
+  return (
+    <>
+      {!customPage && settings.pattern !== "blank" && (
+        <>
+          <defs>
+            <BasePattern settings={settings} metrics={metrics} patternId={patternId} />
+            <MajorPatterns settings={settings} metrics={metrics} majorPatternId={majorPatternId} />
           </defs>
           <rect {...patternBounds} fill={`url(#${patternId})`} />
           {settings.pattern === "dots" && settings.dotMajorEvery > 0 && (
@@ -336,6 +339,14 @@ function PageSvg({
           {settings.pattern === "graph" && <rect {...patternBounds} fill={`url(#${majorPatternId})`} />}
         </>
       )}
+    </>
+  )
+}
+
+function PageBorder({ settings, metrics }: { settings: Settings; metrics: PageMetrics }) {
+  const { pageSize, customPage, pageMargins, contentWidth, borderX, borderY } = metrics
+  return (
+    <>
       {!customPage && settings.borderWidth > 0 && (
         <rect
           x={borderX}
@@ -347,6 +358,14 @@ function PageSvg({
           strokeWidth={settings.borderWidth}
         />
       )}
+    </>
+  )
+}
+
+function CustomPageLayer({ metrics }: { metrics: PageMetrics }) {
+  const { page, pageSize, customPage, indexEntries, pageMargins, contentWidth, contentCenterX } = metrics
+  return (
+    <>
       {customPage?.type === "title" && (
         <g fill="#30302c" fontFamily="Georgia, serif" textAnchor="middle">
           <text x={contentCenterX} y={pageSize.height * 0.44} fontSize={customPage.title.length > 24 ? 6 : 9} fontWeight="bold">
@@ -376,27 +395,86 @@ function PageSvg({
           })}
         </g>
       )}
-      {showPunchHoles && (
-        <g fill="none" stroke="#30302c" strokeWidth="0.25">
-          {punchHoles.map((hole, index) => (
-            <circle key={index} cx={hole.x} cy={hole.y} r={settings.punchHoleDiameter / 2} />
-          ))}
-        </g>
-      )}
+    </>
+  )
+}
+
+function getPageNumberAlignment(settings: Settings, metrics: PageMetrics) {
+  if (settings.numberPosition === "center") return { x: metrics.pageSize.width / 2, anchor: "middle" as const }
+  if (metrics.numberEdge === "right") return { x: metrics.pageSize.width - 9, anchor: "end" as const }
+  return { x: 9, anchor: "start" as const }
+}
+
+function PageNumber({ settings, metrics, logicalPage }: { settings: Settings; metrics: PageMetrics; logicalPage: number }) {
+  const { page, pageSize, customPage } = metrics
+  const { x, anchor } = getPageNumberAlignment(settings, metrics)
+  return (
+    <>
       {customPage?.type !== "title" && showsPageNumber(settings.numberVisibility, logicalPage) && (
         <text
-          x={settings.numberPosition === "center" ? pageSize.width / 2 : numberEdge === "right" ? pageSize.width - 9 : 9}
+          x={x}
           y={pageSize.height - 7}
           fill={settings.numberColor}
           fontFamily={settings.numberFont}
           fontSize={settings.numberFontSize * 25.4 / 72}
           fontStyle={settings.numberItalic ? "italic" : "normal"}
           fontWeight={settings.numberBold ? 700 : 400}
-          textAnchor={settings.numberPosition === "center" ? "middle" : numberEdge === "right" ? "end" : "start"}
+          textAnchor={anchor}
         >
           {page}
         </text>
       )}
+    </>
+  )
+}
+
+function PageSvg({
+  settings,
+  punchHoleSets,
+  logicalPage,
+  paperColor,
+  showPunchHoles,
+  className,
+  ariaLabel,
+}: {
+  settings: Settings
+  punchHoleSets: HoleSet[]
+  logicalPage: number
+  paperColor: string
+  showPunchHoles: boolean
+  className?: string
+  ariaLabel?: string
+}) {
+  const metrics = getPageMetrics(settings, logicalPage)
+  const patternId = useId()
+  const majorPatternId = useId()
+  const punchHoles = getPunchHoles(
+    metrics.pageSize,
+    settings.bindingEdge,
+    logicalPage,
+    settings.punchHoleEndInset,
+    punchHoleSets,
+    metrics.folded,
+  )
+
+  return (
+    <svg
+      className={className}
+      viewBox={`0 0 ${metrics.pageSize.width} ${metrics.pageSize.height}`}
+      role={ariaLabel ? "img" : undefined}
+      aria-label={ariaLabel}
+      aria-hidden={ariaLabel ? undefined : true}
+    >
+      <rect width={metrics.pageSize.width} height={metrics.pageSize.height} fill={paperColor} />
+      <PagePattern settings={settings} metrics={metrics} patternId={patternId} majorPatternId={majorPatternId} />
+      <PageBorder settings={settings} metrics={metrics} />
+      <CustomPageLayer metrics={metrics} />
+      {showPunchHoles && (
+        <g fill="none" stroke="#30302c" strokeWidth="0.25">
+          {punchHoles.map((hole, index) => <circle key={index} cx={hole.x} cy={hole.y} r={settings.punchHoleDiameter / 2} />)}
+        </g>
+      )}
+      <PageNumber settings={settings} metrics={metrics} logicalPage={logicalPage} />
     </svg>
   )
 }
@@ -423,7 +501,7 @@ function PageThumbnail({
   return (
     <button
       type="button"
-      className={`h-[72px] shrink-0 overflow-hidden rounded-sm border focus-visible:outline-2 focus-visible:outline-[#c9823b] ${selected ? "border-[#c9823b] ring-1 ring-[#c9823b]" : ""}`}
+      className={`h-18 shrink-0 overflow-hidden rounded-sm border focus-visible:outline-2 focus-visible:outline-ring ${selected ? "border-ring ring-1 ring-ring" : ""}`}
       style={{ aspectRatio: `${pageSize.width} / ${pageSize.height}` }}
       aria-label={`Page ${page}`}
       onClick={onClick}
@@ -504,75 +582,64 @@ function PrintDocument({ settings, pass }: { settings: Settings; pass: PrintPass
 }
 
 function SectionTitle({ children }: { children: string }) {
-  return <h2 className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{children}</h2>
+  return <h2 className="text-label font-bold uppercase tracking-section text-muted-foreground">{children}</h2>
 }
 
-function App() {
+function FieldRow({ children }: { children: ReactNode }) {
+  return <div className="grid grid-cols-2 gap-2">{children}</div>
+}
+
+function NumberFieldPair({ first, second }: { first: ReactNode; second: ReactNode }) {
+  return <FieldRow>{first}{second}</FieldRow>
+}
+
+function SelectControl({ value, onChange, options, ariaLabel, triggerClassName = "w-full bg-card", disabled = false }: {
+  value: string
+  onChange: (value: string) => void
+  options: Record<string, string>
+  ariaLabel?: string
+  triggerClassName?: string
+  disabled?: boolean
+}) {
+  return (
+    <Select value={value} onValueChange={onChange} disabled={disabled}>
+      <SelectTrigger className={triggerClassName} aria-label={ariaLabel}><SelectValue /></SelectTrigger>
+      <SelectContent>
+        {Object.entries(options).map(([optionValue, label]) => <SelectItem value={optionValue} key={optionValue}>{label}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  )
+}
+
+function CheckboxField({ checked, onChange, title, description, className = "" }: {
+  checked: boolean
+  onChange: (checked: boolean) => void
+  title: string
+  description: string
+  className?: string
+}) {
+  return (
+    <label className={`flex cursor-pointer items-start gap-2 rounded-md border bg-card p-3 text-xs text-card-foreground ${className}`}>
+      <input type="checkbox" className="mt-0.5 size-4 accent-ring" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+      <span>
+        <strong className="block">{title}</strong>
+        <span className="mt-0.5 block text-2xs leading-4 text-muted-foreground">{description}</span>
+      </span>
+    </label>
+  )
+}
+
+function useSettings(currentPage: number) {
   const [settings, setSettings] = useState(initialSettings)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [zoom, setZoom] = useState(100)
-  const [printSettings, setPrintSettings] = useState<{ settings: Settings; pass: PrintPass } | null>(null)
-  const [printPass, setPrintPass] = useState<PrintPass>("all")
-  const [fontError, setFontError] = useState<string | null>(null)
-  const [showPlan, setShowPlan] = useState(false)
-  const [previewPunchGuide, setPreviewPunchGuide] = useState(false)
-
-  const punchHoleSets = useMemo(
-    () => getActivePunchHoleSets(settings.punchHoleSets, settings.binding !== "yotsume"),
-    [settings.binding, settings.punchHoleSets],
-  )
-  const sides = useMemo(
-    () => createImposition({
-      binding: settings.binding,
-      signatures: settings.signatures,
-      sheetsPerSignature: settings.sheets,
-      twoUp: settings.yotsumeTwoUp,
-    }),
-    [settings.binding, settings.signatures, settings.sheets, settings.yotsumeTwoUp],
-  )
-  const punchHolePages = useMemo(
-    () => new Set(sides.filter((side) => showsPunchHoles(settings.punchHolePlacement, side, settings.sheets)).flatMap((side) => side.pages)),
-    [settings.punchHolePlacement, settings.sheets, sides],
-  )
-  const totalPages = new Set(sides.flatMap((side) => side.pages)).size
-  const signatureCount = new Set(sides.map((side) => side.signature)).size
-  const paper = getPaperSize(settings.paper)
-  const pageLayout = getPageLayout(settings.paper, settings.binding, settings.yotsumeOrientation, settings.yotsumeTwoUp)
-  const pageSize = pageLayout.page
-  const showPunchGuide = settings.punchHolePlacement === "separate" && previewPunchGuide
-  const punchGuide = getPunchGuide(settings, sides)
-  const guideSides = settings.punchHolePlacement === "separate" ? 1 : 0
-  const pageName = paper.label.split(" → ")[settings.binding === "yotsume" && !settings.yotsumeTwoUp ? 0 : 1]
-  const firstSignature = sides.filter((side) => side.signature === 1)
-  const visiblePages = Array.from({ length: Math.min(totalPages, 10) }, (_, index) => index + 1)
-  const documentName = settings.pattern === "dots"
-    ? "Dot-grid notebook"
-    : settings.pattern === "lines"
-      ? "Ruled notebook"
-      : settings.pattern === "grid"
-        ? "Square-grid notebook"
-        : settings.pattern === "graph"
-          ? "Graph-paper notebook"
-          : "Blank notebook"
-  const selectedNumberFont = numberFonts.find((font) => font.value === settings.numberFont) ?? numberFonts[0]
-  const customPage = settings.customPages[currentPage]
-
   function update<K extends keyof Settings>(key: K, value: Settings[K]) {
     setSettings((current) => ({ ...current, [key]: value }))
   }
-
   function updateHoleSet(setIndex: number, change: Partial<HoleSet>) {
     update("punchHoleSets", settings.punchHoleSets.map((set, index) => index === setIndex ? { ...set, ...change } : set))
   }
-
   function updateHoleGroup(setIndex: number, groupIndex: number, key: keyof HoleGroup, value: number) {
-    updateHoleSet(setIndex, {
-      groups: settings.punchHoleSets[setIndex].groups.map((group, index) => (
-        index === groupIndex ? { ...group, [key]: value } : group
-      )),
-    })
+    updateHoleSet(setIndex, { groups: settings.punchHoleSets[setIndex].groups.map((group, index) => index === groupIndex ? { ...group, [key]: value } : group) })
   }
-
   function setCustomPage(page: CustomPage | null) {
     setSettings((current) => {
       const customPages = { ...current.customPages }
@@ -581,20 +648,10 @@ function App() {
       return { ...current, customPages }
     })
   }
+  return { settings, setSettings, update, updateHoleSet, updateHoleGroup, setCustomPage }
+}
 
-  useEffect(() => {
-    setCurrentPage((page) => Math.min(page, totalPages))
-  }, [totalPages])
-
-  useEffect(() => {
-    let active = true
-    Promise.all(numberFonts.map((font) => document.fonts.load(`16px ${font.value}`, `${font.label} 1 2 3`)))
-      .catch(() => {
-        if (active) setFontError("Some page-number fonts could not be loaded.")
-      })
-    return () => { active = false }
-  }, [])
-
+function usePrintDialog(printSettings: { settings: Settings; pass: PrintPass } | null, setPrintSettings: (value: null) => void) {
   useEffect(() => {
     if (!printSettings) return
     const clear = () => setPrintSettings(null)
@@ -604,69 +661,113 @@ function App() {
       cancelAnimationFrame(frame)
       window.removeEventListener("afterprint", clear)
     }
-  }, [printSettings])
+  }, [printSettings, setPrintSettings])
+}
 
-  async function exportPdf() {
+function useFontPreload(setFontError: (value: string) => void) {
+  useEffect(() => {
+    let active = true
+    Promise.all(numberFonts.map((font) => document.fonts.load(`16px ${font.value}`, `${font.label} 1 2 3`)))
+      .catch(() => { if (active) setFontError("Some page-number fonts could not be loaded.") })
+    return () => { active = false }
+  }, [setFontError])
+}
+
+const documentNames: Record<Settings["pattern"], string> = {
+  dots: "Dot-grid notebook", lines: "Ruled notebook", grid: "Square-grid notebook",
+  graph: "Graph-paper notebook", blank: "Blank notebook",
+}
+
+function getDerivedModel(settings: Settings, sides: ImpositionSide[], currentPage: number, previewPunchGuide: boolean) {
+  const totalPages = new Set(sides.flatMap((side) => side.pages)).size
+  const signatureCount = new Set(sides.map((side) => side.signature)).size
+  const paper = getPaperSize(settings.paper)
+  const pageLayout = getPageLayout(settings.paper, settings.binding, settings.yotsumeOrientation, settings.yotsumeTwoUp)
+  const pageSize = pageLayout.page
+  const showPunchGuide = settings.punchHolePlacement === "separate" && previewPunchGuide
+  const punchGuide = getPunchGuide(settings, sides)
+  const guideSides = settings.punchHolePlacement === "separate" ? 1 : 0
+  const pageNameIndex = settings.binding === "yotsume" && !settings.yotsumeTwoUp ? 0 : 1
+  const pageName = paper.label.split(" → ")[pageNameIndex]
+  const firstSignature = sides.filter((side) => side.signature === 1)
+  const visiblePages = Array.from({ length: Math.min(totalPages, 10) }, (_, index) => index + 1)
+  const documentName = documentNames[settings.pattern]
+  const selectedNumberFont = numberFonts.find((font) => font.value === settings.numberFont) ?? numberFonts[0]
+  const customPage = settings.customPages[currentPage]
+  return { totalPages, signatureCount, paper, pageLayout, pageSize, showPunchGuide, punchGuide, guideSides, pageName, firstSignature, visiblePages, documentName, selectedNumberFont, customPage }
+}
+
+function createPdfExporter(settings: Settings, printPass: PrintPass, selectedNumberFont: typeof numberFonts[number], setFontError: (value: string | null) => void, setPrintSettings: (value: { settings: Settings; pass: PrintPass }) => void) {
+  return async () => {
     try {
       const font = `${settings.numberItalic ? "italic" : "normal"} ${settings.numberBold ? 700 : 400} 16px ${settings.numberFont}`
       await ensureFontLoaded(document.fonts, font, "1 2 3")
       setFontError(null)
       setPrintSettings({ settings, pass: printPass })
-    } catch {
-      setFontError(`Could not load ${selectedNumberFont.label}. Export was cancelled.`)
-    }
+    } catch { setFontError(`Could not load ${selectedNumberFont.label}. Export was cancelled.`) }
   }
+}
 
+function useAppModel() {
+  const [currentPage, setCurrentPage] = useState(1)
+  const { settings, setSettings, update, updateHoleSet, updateHoleGroup, setCustomPage } = useSettings(currentPage)
+  const [zoom, setZoom] = useState(100)
+  const [printSettings, setPrintSettings] = useState<{ settings: Settings; pass: PrintPass } | null>(null)
+  const [printPass, setPrintPass] = useState<PrintPass>("all")
+  const [fontError, setFontError] = useState<string | null>(null)
+  const [showPlan, setShowPlan] = useState(false)
+  const [previewPunchGuide, setPreviewPunchGuide] = useState(false)
+  const punchHoleSets = useMemo(() => getActivePunchHoleSets(settings.punchHoleSets, settings.binding !== "yotsume"), [settings.binding, settings.punchHoleSets])
+  const sides = useMemo(() => createImposition({ binding: settings.binding, signatures: settings.signatures, sheetsPerSignature: settings.sheets, twoUp: settings.yotsumeTwoUp }), [settings.binding, settings.signatures, settings.sheets, settings.yotsumeTwoUp])
+  const punchHolePages = useMemo(() => new Set(sides.filter((side) => showsPunchHoles(settings.punchHolePlacement, side, settings.sheets)).flatMap((side) => side.pages)), [settings.punchHolePlacement, settings.sheets, sides])
+  const derived = getDerivedModel(settings, sides, currentPage, previewPunchGuide)
+  useEffect(() => setCurrentPage((page) => Math.min(page, derived.totalPages)), [derived.totalPages])
+  useFontPreload(setFontError)
+  usePrintDialog(printSettings, setPrintSettings)
+  const exportPdf = createPdfExporter(settings, printPass, derived.selectedNumberFont, setFontError, setPrintSettings)
+  return { settings, setSettings, currentPage, setCurrentPage, zoom, setZoom, printSettings, setPrintSettings, printPass, setPrintPass, fontError, setFontError, showPlan, setShowPlan, previewPunchGuide, setPreviewPunchGuide, punchHoleSets, sides, punchHolePages, ...derived, update, updateHoleSet, updateHoleGroup, setCustomPage, exportPdf }
+}
+
+type AppModel = ReturnType<typeof useAppModel>
+
+function AppHeader({ model }: { model: AppModel }) {
+  const { settings, printPass, setPrintPass, fontError, sides, documentName, exportPdf } = model
   return (
-    <>
-      <div className="screen-app min-h-svh bg-[#edeae1]">
-        <header className="sticky top-0 z-40 flex h-[72px] items-center justify-between border-b bg-[#fbfaf6] px-5 sm:px-6">
+        <header className="sticky top-0 z-40 flex h-18 items-center justify-between border-b bg-background px-5 sm:px-6">
           <div className="flex min-w-0 items-center gap-4 sm:gap-5">
-            <span className="h-[34px] w-7 shrink-0 rounded-[2px_8px_8px_2px] border-2 border-foreground bg-[#fffdf7] shadow-[inset_5px_0_#e7c895]" aria-hidden="true" />
-            <h1 className="font-serif text-[28px] leading-none">Fold</h1>
-            <span aria-hidden="true" className="hidden h-[30px] w-px shrink-0 bg-border sm:block" />
+            <span className="h-8.5 w-7 shrink-0 rounded-book border-2 border-foreground bg-card shadow-book" aria-hidden="true" />
+            <h1 className="font-serif text-display leading-none">Fold</h1>
+            <span aria-hidden="true" className="hidden h-7.5 w-px shrink-0 bg-border sm:block" />
             <div className="hidden min-w-0 sm:block">
               <p className="truncate text-sm font-semibold">{documentName}</p>
-              <p className="text-[11px] text-muted-foreground">Runs entirely in your browser</p>
+              <p className="text-label text-muted-foreground">Runs entirely in your browser</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {fontError && <p className="max-w-48 text-right text-[10px] text-red-700" role="alert">{fontError}</p>}
-            <Select value={printPass} onValueChange={(value) => setPrintPass(value as PrintPass)}>
-              <SelectTrigger className="w-32 bg-[#fffdf7]" aria-label="Print pass"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All sides</SelectItem>
-                <SelectItem value="fronts">Fronts only</SelectItem>
-                <SelectItem value="backs">Backs only</SelectItem>
-                <SelectItem value="backs-reversed">Backs reversed</SelectItem>
-                {settings.punchHolePlacement === "separate" && <SelectItem value="guide">Punch guide only</SelectItem>}
-              </SelectContent>
-            </Select>
-            <Button className="bg-[#25231f] px-3 hover:bg-[#3c3933]" aria-label="Export PDF" onClick={exportPdf}>
+            {fontError && <p className="max-w-48 text-right text-caption text-red-700" role="alert">{fontError}</p>}
+            <SelectControl
+              value={printPass}
+              onChange={(value) => setPrintPass(value as PrintPass)}
+              options={{ all: "All sides", fronts: "Fronts only", backs: "Backs only", "backs-reversed": "Backs reversed", ...(settings.punchHolePlacement === "separate" && { guide: "Punch guide only" }) }}
+              triggerClassName="w-32 bg-card"
+              ariaLabel="Print pass"
+            />
+            <Button className="bg-primary px-3 hover:bg-primary-hover" aria-label="Export PDF" onClick={exportPdf}>
               <Download /> <span className="hidden sm:inline">Export PDF</span>
             </Button>
           </div>
         </header>
+  )
+}
 
-        <div className="grid xl:h-[calc(100svh-72px)] lg:grid-cols-[292px_minmax(0,1fr)] xl:grid-cols-[292px_minmax(440px,1fr)_312px]">
-          <aside className="border-b bg-[#fbfaf6] lg:border-r lg:border-b-0 xl:h-full xl:overflow-y-auto">
-            <div className="px-5 pt-5 pb-2">
-              <h2 className="font-serif text-[22px]">Book setup</h2>
-              <p className="mt-1 text-[11px] leading-4 text-muted-foreground">Choose a binding, then tune the construction.</p>
-            </div>
-
-            <Tabs defaultValue="binding" className="gap-0">
-              <TabBar>
-                <TabBarTrigger value="binding">BINDING</TabBarTrigger>
-                <TabBarTrigger value="paper">PAPER</TabBarTrigger>
-                <TabBarTrigger value="holes">HOLES</TabBarTrigger>
-              </TabBar>
-
+function PaperTab({ model }: { model: AppModel }) {
+  const { settings, paper, pageSize, pageName, update } = model
+  return (
               <TabsContent value="paper" className="mt-0">
                 <section className="border-b p-5">
                   <div className="mb-3 flex items-center justify-between">
                     <Label>Paper sheet</Label>
-                    <span className="text-[10px] text-muted-foreground">{paperSizes.length} presets</span>
+                    <span className="text-caption text-muted-foreground">{paperSizes.length} presets</span>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     {paperSizes.map((paperSize) => {
@@ -681,12 +782,12 @@ function App() {
                         <button
                           type="button"
                           key={paperSize.id}
-                          className={`rounded-lg border px-2 py-3 text-left transition-colors ${selected ? "border-[#c9823b] bg-[#f3e4d1] ring-1 ring-[#c9823b]" : "bg-[#fffdf7] hover:border-[#aaa398]"}`}
+                          className={`rounded-lg border px-2 py-3 text-left transition-colors ${selected ? "border-ring bg-accent ring-1 ring-ring" : "bg-card hover:border-border-strong"}`}
                           onClick={() => update("paper", paperSize.id)}
                         >
-                          <strong className={`block text-xs ${selected ? "text-[#a96528]" : "text-foreground"}`}>{paperSize.id === "tabloid" ? "Tabloid" : paperSize.id.toUpperCase()}</strong>
-                          <span className="mt-1 block text-[9px] text-muted-foreground">{formatMillimeters(sheetSize.width)} × {formatMillimeters(sheetSize.height)} mm</span>
-                          <span className="mt-0.5 block text-[9px] text-muted-foreground">
+                          <strong className={`block text-xs ${selected ? "text-accent-strong" : "text-foreground"}`}>{paperSize.id === "tabloid" ? "Tabloid" : paperSize.id.toUpperCase()}</strong>
+                          <span className="mt-1 block text-2xs text-muted-foreground">{formatMillimeters(sheetSize.width)} × {formatMillimeters(sheetSize.height)} mm</span>
+                          <span className="mt-0.5 block text-2xs text-muted-foreground">
                             {settings.binding !== "yotsume"
                               ? `folds to ${paperSize.label.split(" → ")[1]}`
                               : settings.yotsumeTwoUp
@@ -697,61 +798,42 @@ function App() {
                       )
                     })}
                   </div>
-                  <div className="mt-4 rounded-lg bg-[#f5f2ea] p-3">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.09em] text-muted-foreground">Finished page</p>
+                  <div className="mt-4 rounded-lg bg-muted p-3">
+                    <p className="text-caption font-bold uppercase tracking-label-tight text-muted-foreground">Finished page</p>
                     <p className="mt-1 text-xs font-semibold">{pageName} · {formatMillimeters(pageSize.width)} × {formatMillimeters(pageSize.height)} mm</p>
                   </div>
                 </section>
               </TabsContent>
+  )
+}
 
+function BindingTab({ model }: { model: AppModel }) {
+  const { settings, signatureCount, update } = model
+  return (
               <TabsContent value="binding" className="mt-0">
                 <section className="border-b p-5">
                   <div className="mb-3 flex items-center justify-between">
                     <Label>Binding</Label>
-                    <BookOpen className="size-4 text-[#c9823b]" />
+                    <BookOpen className="size-4 text-ring" />
                   </div>
-                  <Select value={settings.binding} onValueChange={(value) => update("binding", value as Binding)}>
-                    <SelectTrigger className="w-full bg-[#fffdf7]"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="coptic">Coptic / multi-signature</SelectItem>
-                      <SelectItem value="saddle">Saddle stitch</SelectItem>
-                      <SelectItem value="yotsume">Japanese stab / yotsume toji</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <SelectControl value={settings.binding} onChange={(value) => update("binding", value as Binding)} options={{ coptic: "Coptic / multi-signature", saddle: "Saddle stitch", yotsume: "Japanese stab / yotsume toji" }} />
                   {settings.binding === "yotsume" && (
                     <>
                       <div className="mt-3 grid gap-1.5">
                         <Label>Binding edge</Label>
-                        <Select value={settings.bindingEdge} onValueChange={(value) => update("bindingEdge", value as BindingEdge)}>
-                          <SelectTrigger className="w-full bg-[#fffdf7]"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="left">Left</SelectItem>
-                            <SelectItem value="right">Right</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <SelectControl value={settings.bindingEdge} onChange={(value) => update("bindingEdge", value as BindingEdge)} options={{ left: "Left", right: "Right" }} />
                       </div>
                       <div className="mt-3 grid gap-1.5">
                         <Label>Page orientation</Label>
-                        <Select value={settings.yotsumeOrientation} onValueChange={(value) => update("yotsumeOrientation", value as Orientation)}>
-                          <SelectTrigger className="w-full bg-[#fffdf7]"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="portrait">Portrait</SelectItem>
-                            <SelectItem value="landscape">Landscape</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <SelectControl value={settings.yotsumeOrientation} onChange={(value) => update("yotsumeOrientation", value as Orientation)} options={{ portrait: "Portrait", landscape: "Landscape" }} />
                       </div>
-                      <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-md border bg-[#fffdf7] p-3 text-xs">
-                        <input
-                          type="checkbox"
-                          className="mt-0.5 size-4 accent-[#c9823b]"
-                          checked={settings.yotsumeTwoUp}
-                          onChange={(event) => update("yotsumeTwoUp", event.target.checked)}
-                        />
-                        <span>
-                          <strong className="block">Two-up, cut in half</strong>
-                          <span className="mt-0.5 block text-[9px] leading-4 text-muted-foreground">Print two leaves per sheet instead of using the full sheet.</span>
-                        </span>
-                      </label>
+                      <CheckboxField
+                        className="mt-3"
+                        checked={settings.yotsumeTwoUp}
+                        onChange={(checked) => update("yotsumeTwoUp", checked)}
+                        title="Two-up, cut in half"
+                        description="Print two leaves per sheet instead of using the full sheet."
+                      />
                     </>
                   )}
                   <div className={`mt-3 grid gap-2 ${settings.binding === "yotsume" ? "grid-cols-1" : "grid-cols-2"}`}>
@@ -760,7 +842,7 @@ function App() {
                     )}
                     <NumberField label={settings.binding === "yotsume" ? "Sheets" : "Sheets each"} value={settings.sheets} min={1} max={12} onChange={(value) => update("sheets", value)} />
                   </div>
-                  <p className="mt-3 text-[10px] leading-4 text-muted-foreground">
+                  <p className="mt-3 text-caption leading-4 text-muted-foreground">
                     {settings.binding === "saddle"
                       ? "All sheets nest into one signature. Best for smaller books."
                       : settings.binding === "yotsume"
@@ -771,45 +853,39 @@ function App() {
                   </p>
                 </section>
               </TabsContent>
+  )
+}
 
+function HolesTab({ model }: { model: AppModel }) {
+  const { settings, printPass, setPrintPass, setPreviewPunchGuide, punchHoleSets, pageSize, update, updateHoleSet, updateHoleGroup } = model
+  return (
               <TabsContent value="holes" className="mt-0">
                 <section className="border-b p-5">
                   <div className="grid gap-1.5">
                     <Label>Punch indicators</Label>
-                    <Select
+                    <SelectControl
                       value={settings.punchHolePlacement}
-                      onValueChange={(value) => {
+                      onChange={(value) => {
                         const placement = value as PunchHolePlacement
                         update("punchHolePlacement", placement)
                         if (placement !== "separate" && printPass === "guide") setPrintPass("all")
                         setPreviewPunchGuide(placement === "separate")
                       }}
-                    >
-                      <SelectTrigger className="w-full bg-[#fffdf7]"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="every">Every page</SelectItem>
-                        <SelectItem value="signature-front">Each signature · sheet 1 front</SelectItem>
-                        <SelectItem value="signature-back">Each signature · last sheet back</SelectItem>
-                        <SelectItem value="separate">Separate guide sheet</SelectItem>
-                        <SelectItem value="none">None</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-[9px] leading-4 text-muted-foreground">A separate guide is appended after the notebook without changing its pagination.</p>
+                      options={{ every: "Every page", "signature-front": "Each signature · sheet 1 front", "signature-back": "Each signature · last sheet back", separate: "Separate guide sheet", none: "None" }}
+                    />
+                    <p className="text-2xs leading-4 text-muted-foreground">A separate guide is appended after the notebook without changing its pagination.</p>
                   </div>
                   <fieldset className={`mt-3 grid gap-3 ${settings.punchHolePlacement === "none" ? "opacity-45" : ""}`} disabled={settings.punchHolePlacement === "none"}>
-                    <div className="grid grid-cols-2 gap-2">
-                      <NumberField label="End inset (mm)" value={settings.punchHoleEndInset} min={5} max={Math.max(5, pageSize.height / 2 - 1)} step={0.5} onChange={(value) => update("punchHoleEndInset", value)} />
-                      <NumberField label="Hole diameter (mm)" value={settings.punchHoleDiameter} min={0.5} max={10} step={0.5} onChange={(value) => update("punchHoleDiameter", value)} />
-                    </div>
+                    <NumberFieldPair first={<NumberField label="End inset (mm)" value={settings.punchHoleEndInset} min={5} max={Math.max(5, pageSize.height / 2 - 1)} step={0.5} onChange={(value) => update("punchHoleEndInset", value)} />} second={<NumberField label="Hole diameter (mm)" value={settings.punchHoleDiameter} min={0.5} max={10} step={0.5} onChange={(value) => update("punchHoleDiameter", value)} />} />
                     <div className="grid gap-3 border-t pt-3">
                       <div className="flex items-center justify-between">
                         <Label>{settings.binding === "yotsume" ? "Horizontal sets" : "Pattern groups"}</Label>
-                        <span className="text-[9px] text-muted-foreground">{punchHoleSets.reduce((total, set) => total + set.groups.reduce((setTotal, group) => setTotal + group.holes, 0), 0)} holes</span>
+                        <span className="text-2xs text-muted-foreground">{punchHoleSets.reduce((total, set) => total + set.groups.reduce((setTotal, group) => setTotal + group.holes, 0), 0)} holes</span>
                       </div>
                       {punchHoleSets.map((set, setIndex) => (
-                        <div className="rounded-md border bg-[#fffdf7] p-2" key={setIndex}>
+                        <div className="rounded-md border bg-card p-2" key={setIndex}>
                           <div className="mb-2 flex items-center justify-between">
-                            <span className="text-[9px] font-bold uppercase tracking-[0.09em] text-muted-foreground">{settings.binding === "yotsume" ? `Set ${setIndex + 1}` : "Center fold"}</span>
+                            <span className="text-2xs font-bold uppercase tracking-label-tight text-muted-foreground">{settings.binding === "yotsume" ? `Set ${setIndex + 1}` : "Center fold"}</span>
                             {settings.binding === "yotsume" && settings.punchHoleSets.length > 1 && (
                               <div className="flex gap-1">
                                 <Button type="button" variant="outline" size="icon-sm" aria-label={`Move hole set ${setIndex + 1} up`} disabled={setIndex === 0} onClick={() => update("punchHoleSets", moveItem(settings.punchHoleSets, setIndex, setIndex - 1))}>
@@ -858,38 +934,66 @@ function App() {
                       )}
                     </div>
                   </fieldset>
-                  <p className="mt-3 text-[9px] leading-4 text-muted-foreground">
+                  <p className="mt-3 text-2xs leading-4 text-muted-foreground">
                     Weights divide the area between the end insets. Add a zero-hole group as a spacer—for example, 3 / 0 / 3 holes.
                     {settings.binding === "yotsume" ? " Each horizontal set has its own edge offset and groups." : " Folded bindings use one set on the center fold."}
                   </p>
                 </section>
               </TabsContent>
+  )
+}
+
+function BookSetup({ model }: { model: AppModel }) {
+  const { sides, totalPages, paper, guideSides } = model
+  return (
+          <aside className="border-b bg-background lg:border-r lg:border-b-0 xl:h-full xl:overflow-y-auto">
+            <div className="px-5 pt-5 pb-2">
+              <h2 className="font-serif text-heading">Book setup</h2>
+              <p className="mt-1 text-label leading-4 text-muted-foreground">Choose a binding, then tune the construction.</p>
+            </div>
+
+            <Tabs defaultValue="binding" className="gap-0">
+              <TabBar>
+                <TabBarTrigger value="binding">BINDING</TabBarTrigger>
+                <TabBarTrigger value="paper">PAPER</TabBarTrigger>
+                <TabBarTrigger value="holes">HOLES</TabBarTrigger>
+              </TabBar>
+
+              <PaperTab model={model} />
+
+              <BindingTab model={model} />
+
+              <HolesTab model={model} />
             </Tabs>
 
-            <div className="grid grid-cols-3 divide-x border-b bg-[#d8d3c8]" aria-live="polite">
+            <div className="grid grid-cols-3 divide-x border-b bg-border" aria-live="polite">
               {[
                 [totalPages, "pages"],
                 [sides.length / 2 + guideSides, "sheets"],
                 [sides.length + guideSides, "sides"],
               ].map(([value, label]) => (
-                <div className="bg-[#fbfaf6] py-3 text-center" key={label}>
+                <div className="bg-background py-3 text-center" key={label}>
                   <strong className="block font-serif text-xl font-normal">{value}</strong>
-                  <span className="text-[8px] font-bold uppercase tracking-[0.1em] text-muted-foreground">{label}</span>
+                  <span className="text-3xs font-bold uppercase tracking-label text-muted-foreground">{label}</span>
                 </div>
               ))}
             </div>
 
-            <div className="flex gap-2 px-5 py-4 text-[10px] leading-4 text-muted-foreground">
-              <Info className="mt-0.5 size-3.5 shrink-0 text-[#446a72]" />
+            <div className="flex gap-2 px-5 py-4 text-caption leading-4 text-muted-foreground">
+              <Info className="mt-0.5 size-3.5 shrink-0 text-info" />
               <p>Changing paper keeps your page style and recalculates the imposition.</p>
             </div>
           </aside>
+  )
+}
 
-          <main className="flex min-h-[700px] min-w-0 flex-col bg-[#edeae1] xl:h-full xl:min-h-0">
-            <div className="flex h-[60px] shrink-0 items-center justify-between border-b bg-[#f3f0e8] px-5">
+function PreviewToolbar({ model }: { model: AppModel }) {
+  const { settings, currentPage, setCurrentPage, zoom, setZoom, setPreviewPunchGuide, totalPages, paper, pageLayout, pageSize, showPunchGuide, pageName } = model
+  return (
+            <div className="flex h-15 shrink-0 items-center justify-between border-b bg-secondary px-5 text-secondary-foreground">
               <div>
                 <p className="text-xs font-semibold">{showPunchGuide ? "Punch guide" : "Live preview"}</p>
-                <p className="mt-0.5 text-[10px] text-muted-foreground">
+                <p className="mt-0.5 text-caption text-muted-foreground">
                   {showPunchGuide ? "Separate sheet" : pageName} · {formatMillimeters(showPunchGuide ? pageLayout.paper.width : pageSize.width)} × {formatMillimeters(showPunchGuide ? pageLayout.paper.height : pageSize.height)} mm
                 </p>
               </div>
@@ -898,7 +1002,7 @@ function App() {
                   <Button variant="outline" size="icon-sm" aria-label="Zoom out" disabled={zoom === 50} onClick={() => setZoom((value) => Math.max(50, value - 10))}>
                     <Minus />
                   </Button>
-                  <span className="w-10 text-center text-[10px] text-muted-foreground" aria-live="polite">{zoom}%</span>
+                  <span className="w-10 text-center text-caption text-muted-foreground" aria-live="polite">{zoom}%</span>
                   <Button variant="outline" size="icon-sm" aria-label="Zoom in" disabled={zoom === 200} onClick={() => setZoom((value) => Math.min(200, value + 10))}>
                     <Plus />
                   </Button>
@@ -910,7 +1014,7 @@ function App() {
                 )}
                 {!showPunchGuide && (
                   <>
-                    <span className="mr-1 hidden text-[11px] text-muted-foreground sm:inline">Page {currentPage} of {totalPages}</span>
+                    <span className="mr-1 hidden text-label text-muted-foreground sm:inline">Page {currentPage} of {totalPages}</span>
                     <Button variant="outline" size="icon-sm" aria-label="Previous page" disabled={currentPage === 1} onClick={() => setCurrentPage((page) => page - 1)}>
                       <ArrowLeft />
                     </Button>
@@ -921,8 +1025,13 @@ function App() {
                 )}
               </div>
             </div>
+  )
+}
 
-            <div className="flex min-h-[540px] flex-1 overflow-auto p-4 lg:p-6">
+const PreviewPage = ({ model }: { model: AppModel }) => {
+  const { settings, currentPage, zoom, punchHoleSets, punchHolePages, paper, pageLayout, pageSize, showPunchGuide, punchGuide } = model
+  return (
+            <div className="flex min-h-135 flex-1 overflow-auto p-4 lg:p-6">
               <div
                 className="relative m-auto shrink-0"
                 style={{
@@ -936,7 +1045,7 @@ function App() {
                   <div
                     role="img"
                     aria-label="Punch guide preview"
-                    className={`grid h-full w-full overflow-hidden bg-[#fffef9] shadow-[0_18px_34px_rgba(55,49,35,.14)] ${pageLayout.layout === "stacked" ? "grid-rows-2 divide-y" : pageLayout.layout === "side-by-side" ? "grid-cols-2 divide-x" : "grid-cols-1"}`}
+                    className={`grid h-full w-full overflow-hidden bg-paper shadow-paper ${pageLayout.layout === "stacked" ? "grid-rows-2 divide-y" : pageLayout.layout === "side-by-side" ? "grid-cols-2 divide-x" : "grid-cols-1"}`}
                   >
                     {punchGuide.pages.map((page) => (
                       <div className="min-h-0 min-w-0 overflow-hidden" key={page}>
@@ -958,30 +1067,35 @@ function App() {
                     logicalPage={currentPage}
                     paperColor={settings.previewPaperColor}
                     showPunchHoles={punchHolePages.has(currentPage)}
-                    className="block h-full w-full shadow-[0_18px_34px_rgba(55,49,35,.14)]"
+                    className="block h-full w-full shadow-paper"
                     ariaLabel="Notebook page preview"
                   />
                 )}
               </div>
             </div>
+  )
+}
 
-            <section className="shrink-0 border-t bg-[#f3f0e8] px-4 py-3">
+function PreviewStrip({ model }: { model: AppModel }) {
+  const { settings, currentPage, setCurrentPage, showPlan, setShowPlan, punchHoleSets, punchHolePages, pageSize, firstSignature, visiblePages } = model
+  return (
+            <section className="shrink-0 border-t bg-secondary px-4 py-3">
               <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-[10px] font-bold uppercase tracking-[0.11em] text-muted-foreground">
+                <h3 className="text-caption font-bold uppercase tracking-label-wide text-muted-foreground">
                   {showPlan
                     ? settings.binding === "yotsume"
                       ? settings.yotsumeTwoUp ? "Imposition · cut sheets" : "Imposition · full sheets"
                       : "Imposition · first signature"
                     : "Pages"}
                 </h3>
-                <button type="button" className="flex items-center gap-1 text-[10px] font-semibold text-[#446a72]" onClick={() => setShowPlan((shown) => !shown)}>
+                <button type="button" className="flex items-center gap-1 text-caption font-semibold text-info" onClick={() => setShowPlan((shown) => !shown)}>
                   {showPlan ? "View pages" : "View imposition plan"}<ArrowUpRight className="size-3" />
                 </button>
               </div>
-              <div className="flex h-[76px] gap-2 overflow-x-auto px-0.5 py-0.5">
+              <div className="flex h-19 gap-2 overflow-x-auto px-0.5 py-0.5">
                 {showPlan ? firstSignature.map((side: ImpositionSide) => (
-                  <div className="min-w-36 rounded border bg-[#fffdf7] p-2" key={`${side.sheet}-${side.side}`}>
-                    <span className="block text-[8px] uppercase tracking-wider text-muted-foreground">Sheet {side.sheet} · {side.side}</span>
+                  <div className="min-w-36 rounded border bg-card p-2" key={`${side.sheet}-${side.side}`}>
+                    <span className="block text-3xs uppercase tracking-wider text-muted-foreground">Sheet {side.sheet} · {side.side}</span>
                     <div className={`mt-1 grid border text-center font-serif text-xs ${side.pages.length > 1 ? "grid-cols-2 divide-x" : ""}`}>
                       {side.pages.map((page) => <span className="py-2" key={page}>{displayedPage(settings, page)}</span>)}
                     </div>
@@ -1000,33 +1114,30 @@ function App() {
                 ))}
               </div>
             </section>
+  )
+}
+
+function Preview({ model }: { model: AppModel }) {
+  const { settings, currentPage, setCurrentPage, zoom, setZoom, showPlan, setShowPlan, setPreviewPunchGuide, punchHoleSets, punchHolePages, totalPages, paper, pageLayout, pageSize, showPunchGuide, punchGuide, pageName, firstSignature, visiblePages } = model
+  return (
+          <main className="flex min-h-175 min-w-0 flex-col bg-canvas xl:h-full xl:min-h-0">
+            <PreviewToolbar model={model} />
+
+            <PreviewPage model={model} />
+
+            <PreviewStrip model={model} />
           </main>
+  )
+}
 
-          <aside className="border-t bg-[#fbfaf6] lg:col-span-2 xl:col-span-1 xl:h-full xl:overflow-y-auto xl:border-t-0 xl:border-l">
-            <div className="px-[18px] pt-[18px] pb-2">
-              <h2 className="font-serif text-[22px]">Properties</h2>
-            </div>
-
-            <Tabs defaultValue="style" className="gap-0">
-              <TabBar className="px-[18px]">
-                <TabBarTrigger value="style">STYLE</TabBarTrigger>
-                <TabBarTrigger value="layout">LAYOUT</TabBarTrigger>
-                <TabBarTrigger value="page">PAGE</TabBarTrigger>
-              </TabBar>
-
-              <div className="flex items-center gap-3 border-b bg-[#f5f2ea] px-[18px] py-3.5">
-                <span className="grid size-[34px] place-items-center rounded-md border bg-[#fbfaf6]"><Hash className="size-4 text-[#c9823b]" /></span>
-                <div>
-                  <p className="text-xs font-semibold">Page style</p>
-                  <p className="text-[9px] text-muted-foreground">Pattern · margins · numbering</p>
-                </div>
-              </div>
-
+function StyleTab({ model }: { model: AppModel }) {
+  const { settings, paper, update } = model
+  return (
               <TabsContent value="style" className="mt-0">
-                <section className="grid gap-3 border-b p-[18px]">
+                <section className="grid gap-3 border-b p-4.5">
                   <SectionTitle>Preview paper color</SectionTitle>
                   <Select value={settings.previewPaperColor} onValueChange={(value) => update("previewPaperColor", value)}>
-                    <SelectTrigger className="w-full bg-[#fffdf7]"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="w-full bg-card"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="#fffef9">
                         <span className="flex items-center gap-2"><span className="size-3 rounded-full border" style={{ backgroundColor: "#fffef9" }} />White (default)</span>
@@ -1038,106 +1149,67 @@ function App() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-[9px] leading-4 text-muted-foreground">Clairefontaine Trophée screen swatches. Preview only; PDF pages stay white.</p>
+                  <p className="text-2xs leading-4 text-muted-foreground">Clairefontaine Trophée screen swatches. Preview only; PDF pages stay white.</p>
                 </section>
 
-                <section className="grid gap-3 border-b p-[18px]">
+                <section className="grid gap-3 border-b p-4.5">
                   <SectionTitle>Page pattern</SectionTitle>
-                  <Select value={settings.pattern} onValueChange={(value) => update("pattern", value as Settings["pattern"])}>
-                    <SelectTrigger className="w-full bg-[#fffdf7]"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="dots">Dot grid</SelectItem>
-                      <SelectItem value="lines">Ruled lines</SelectItem>
-                      <SelectItem value="grid">Square grid</SelectItem>
-                      <SelectItem value="graph">Graph paper</SelectItem>
-                      <SelectItem value="blank">Blank</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <SelectControl value={settings.pattern} onChange={(value) => update("pattern", value as Settings["pattern"])} options={{ dots: "Dot grid", lines: "Ruled lines", grid: "Square grid", graph: "Graph paper", blank: "Blank" }} />
                   {settings.pattern === "dots" && (
                     <>
-                      <div className="grid grid-cols-2 gap-2">
-                        <NumberField label="Dot size (mm)" value={settings.dotSize} min={0.05} max={2} step={0.05} onChange={(value) => update("dotSize", value)} />
-                        <NumberField label="Spacing (mm)" value={settings.dotSpacing} min={2} max={20} step={0.5} onChange={(value) => update("dotSpacing", value)} />
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <NumberField label="Major interval" value={settings.dotMajorEvery} min={0} max={20} onChange={(value) => update("dotMajorEvery", value)} />
-                        <NumberField label="Major size (mm)" value={settings.dotMajorSize} min={0.05} max={4} step={0.05} onChange={(value) => update("dotMajorSize", value)} />
-                      </div>
-                      <p className="text-[9px] leading-4 text-muted-foreground">Set the interval to 0 to disable major dots.</p>
+                      <NumberFieldPair first={<NumberField label="Dot size (mm)" value={settings.dotSize} min={0.05} max={2} step={0.05} onChange={(value) => update("dotSize", value)} />} second={<NumberField label="Spacing (mm)" value={settings.dotSpacing} min={2} max={20} step={0.5} onChange={(value) => update("dotSpacing", value)} />} />
+                      <NumberFieldPair first={<NumberField label="Major interval" value={settings.dotMajorEvery} min={0} max={20} onChange={(value) => update("dotMajorEvery", value)} />} second={<NumberField label="Major size (mm)" value={settings.dotMajorSize} min={0.05} max={4} step={0.05} onChange={(value) => update("dotMajorSize", value)} />} />
+                      <p className="text-2xs leading-4 text-muted-foreground">Set the interval to 0 to disable major dots.</p>
                       <ColorField label="Dot color" value={settings.dotColor} onChange={(value) => update("dotColor", value)} />
                     </>
                   )}
                   {(settings.pattern === "lines" || settings.pattern === "grid" || settings.pattern === "graph") && (
                     <>
-                      <div className="grid grid-cols-2 gap-2">
-                        <NumberField label={settings.pattern === "graph" ? "Thin width (mm)" : "Line width (mm)"} value={settings.lineWidth} min={0.05} max={1} step={0.05} onChange={(value) => update("lineWidth", value)} />
-                        <NumberField label={settings.pattern === "graph" ? "Cell size (mm)" : "Spacing (mm)"} value={settings.lineSpacing} min={3} max={20} step={0.5} onChange={(value) => update("lineSpacing", value)} />
-                      </div>
+                      <NumberFieldPair first={<NumberField label={settings.pattern === "graph" ? "Thin width (mm)" : "Line width (mm)"} value={settings.lineWidth} min={0.05} max={1} step={0.05} onChange={(value) => update("lineWidth", value)} />} second={<NumberField label={settings.pattern === "graph" ? "Cell size (mm)" : "Spacing (mm)"} value={settings.lineSpacing} min={3} max={20} step={0.5} onChange={(value) => update("lineSpacing", value)} />} />
                       <ColorField label={settings.pattern === "graph" ? "Thin line color" : "Line color"} value={settings.lineColor} onChange={(value) => update("lineColor", value)} />
                     </>
                   )}
                   {settings.pattern === "graph" && (
                     <>
-                      <div className="grid grid-cols-2 gap-2">
-                        <NumberField label="Cells per block" value={settings.graphMajorEvery} min={2} max={20} onChange={(value) => update("graphMajorEvery", value)} />
-                        <NumberField label="Thick width (mm)" value={settings.graphMajorLineWidth} min={0.05} max={2} step={0.05} onChange={(value) => update("graphMajorLineWidth", value)} />
-                      </div>
+                      <NumberFieldPair first={<NumberField label="Cells per block" value={settings.graphMajorEvery} min={2} max={20} onChange={(value) => update("graphMajorEvery", value)} />} second={<NumberField label="Thick width (mm)" value={settings.graphMajorLineWidth} min={0.05} max={2} step={0.05} onChange={(value) => update("graphMajorLineWidth", value)} />} />
                       <ColorField label="Thick line color" value={settings.graphMajorColor} onChange={(value) => update("graphMajorColor", value)} />
-                      <label className="flex cursor-pointer items-start gap-2 rounded-md border bg-[#fffdf7] p-3 text-xs">
-                        <input
-                          type="checkbox"
-                          className="mt-0.5 size-4 accent-[#c9823b]"
-                          checked={settings.graphCompleteBlocks}
-                          onChange={(event) => update("graphCompleteBlocks", event.target.checked)}
-                        />
-                        <span>
-                          <strong className="block">Complete blocks only</strong>
-                          <span className="mt-0.5 block text-[9px] leading-4 text-muted-foreground">Remove partial cell groups and center the grid.</span>
-                        </span>
-                      </label>
+                      <CheckboxField
+                        checked={settings.graphCompleteBlocks}
+                        onChange={(checked) => update("graphCompleteBlocks", checked)}
+                        title="Complete blocks only"
+                        description="Remove partial cell groups and center the grid."
+                      />
                     </>
                   )}
                 </section>
               </TabsContent>
+  )
+}
 
+function LayoutTab({ model }: { model: AppModel }) {
+  const { settings, pageSize, selectedNumberFont, update } = model
+  return (
               <TabsContent value="layout" className="mt-0">
-                <section className="grid gap-3 border-b p-[18px]">
+                <section className="grid gap-3 border-b p-4.5">
                   <SectionTitle>Margins & border</SectionTitle>
-                  <div className="grid grid-cols-2 gap-2">
-                    <NumberField label="Margin (mm)" value={settings.margin} min={0} max={30} onChange={(value) => update("margin", value)} />
-                    <NumberField label="Gutter (mm)" value={settings.gutterMargin} min={0} max={Math.max(0, pageSize.width - settings.margin * 2 - 10)} step={0.5} onChange={(value) => update("gutterMargin", value)} />
-                  </div>
-                  <p className="text-[9px] leading-4 text-muted-foreground">The gutter is added to the binding-side margin.</p>
-                  <div className="grid grid-cols-2 gap-2">
+                  <NumberFieldPair first={<NumberField label="Margin (mm)" value={settings.margin} min={0} max={30} onChange={(value) => update("margin", value)} />} second={<NumberField label="Gutter (mm)" value={settings.gutterMargin} min={0} max={Math.max(0, pageSize.width - settings.margin * 2 - 10)} step={0.5} onChange={(value) => update("gutterMargin", value)} />} />
+                  <p className="text-2xs leading-4 text-muted-foreground">The gutter is added to the binding-side margin.</p>
+                  <FieldRow>
                     <NumberField label="Border (mm)" value={settings.borderWidth} min={0} max={2} step={0.1} onChange={(value) => update("borderWidth", value)} />
                     <ColorField label="Border color" value={settings.borderColor} onChange={(value) => update("borderColor", value)} />
-                  </div>
+                  </FieldRow>
                 </section>
 
-                <section className="grid gap-3 border-b p-[18px]">
+                <section className="grid gap-3 border-b p-4.5">
                   <SectionTitle>Numbering</SectionTitle>
                   <div className="grid grid-cols-2 gap-2">
                     <div className="grid gap-1.5">
                       <Label>Pages</Label>
-                      <Select value={settings.numberVisibility} onValueChange={(value) => update("numberVisibility", value as PageNumberVisibility)}>
-                        <SelectTrigger className="w-full bg-[#fffdf7]" aria-label="Numbered pages"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="both">Left & right</SelectItem>
-                          <SelectItem value="right">Right only</SelectItem>
-                          <SelectItem value="left">Left only</SelectItem>
-                          <SelectItem value="none">Hidden</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <SelectControl value={settings.numberVisibility} onChange={(value) => update("numberVisibility", value as PageNumberVisibility)} options={{ both: "Left & right", right: "Right only", left: "Left only", none: "Hidden" }} ariaLabel="Numbered pages" />
                     </div>
                     <div className="grid gap-1.5">
                       <Label>Position</Label>
-                      <Select disabled={settings.numberVisibility === "none"} value={settings.numberPosition} onValueChange={(value) => update("numberPosition", value as Settings["numberPosition"])}>
-                        <SelectTrigger className="w-full bg-[#fffdf7]" aria-label="Page number position"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="outer">Outer corners</SelectItem>
-                          <SelectItem value="center">Centered</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <SelectControl disabled={settings.numberVisibility === "none"} value={settings.numberPosition} onChange={(value) => update("numberPosition", value as Settings["numberPosition"])} options={{ outer: "Outer corners", center: "Centered" }} ariaLabel="Page number position" />
                     </div>
                   </div>
                   <fieldset disabled={settings.numberVisibility === "none"} className="grid gap-3">
@@ -1145,7 +1217,7 @@ function App() {
                       <div className="grid gap-1.5">
                         <Label>Font</Label>
                         <Select value={settings.numberFont} onValueChange={(value) => update("numberFont", value as NumberFont)}>
-                          <SelectTrigger className="w-full bg-[#fffdf7]" aria-label="Page number font">
+                          <SelectTrigger className="w-full bg-card" aria-label="Page number font">
                             <SelectValue>
                               <span className="text-base" style={{ fontFamily: selectedNumberFont.value }}>{selectedNumberFont.label} (1 2 3)</span>
                             </SelectValue>
@@ -1169,7 +1241,7 @@ function App() {
                           type="button"
                           variant="outline"
                           aria-pressed={settings.numberBold}
-                          className={settings.numberBold ? "border-[#c9823b] bg-[#f3e4d1] text-[#a96528]" : ""}
+                          className={settings.numberBold ? "border-ring bg-accent text-accent-strong" : ""}
                           onClick={() => update("numberBold", !settings.numberBold)}
                         >
                           <strong>B</strong> Bold
@@ -1178,7 +1250,7 @@ function App() {
                           type="button"
                           variant="outline"
                           aria-pressed={settings.numberItalic}
-                          className={settings.numberItalic ? "border-[#c9823b] bg-[#f3e4d1] text-[#a96528]" : ""}
+                          className={settings.numberItalic ? "border-ring bg-accent text-accent-strong" : ""}
                           onClick={() => update("numberItalic", !settings.numberItalic)}
                         >
                           <em>I</em> Italic
@@ -1189,9 +1261,14 @@ function App() {
                   </fieldset>
                 </section>
               </TabsContent>
+  )
+}
 
+function PageTab({ model }: { model: AppModel }) {
+  const { settings, currentPage, customPage, setCustomPage } = model
+  return (
               <TabsContent value="page" className="mt-0">
-                <section className="grid gap-3 border-b p-[18px]">
+                <section className="grid gap-3 border-b p-4.5">
                   <SectionTitle>{`Page ${displayedPage(settings, currentPage)}`}</SectionTitle>
                   <div className="grid gap-1.5">
                     <Label>Template</Label>
@@ -1203,7 +1280,7 @@ function App() {
                         else setCustomPage(null)
                       }}
                     >
-                      <SelectTrigger className="w-full bg-[#fffdf7]"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="w-full bg-card"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="default">Default page</SelectItem>
                         <SelectItem value="title">Title page</SelectItem>
@@ -1232,39 +1309,98 @@ function App() {
                       <div className="grid gap-1.5">
                         <Label>Entries</Label>
                         <textarea
-                          className="border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 min-h-32 w-full resize-y rounded-md border bg-[#fffdf7] px-3 py-2 text-sm shadow-xs outline-none focus-visible:ring-[3px]"
+                          className="border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 min-h-32 w-full resize-y rounded-md border bg-card px-3 py-2 text-sm shadow-xs outline-none focus-visible:ring-3"
                           value={customPage.entries}
                           placeholder={"Projects | 4\nNotes | 12"}
                           onChange={(event) => setCustomPage({ ...customPage, entries: event.target.value })}
                         />
-                        <p className="text-[9px] leading-4 text-muted-foreground">Use one entry per line. Put a | before its page number.</p>
+                        <p className="text-2xs leading-4 text-muted-foreground">Use one entry per line. Put a | before its page number.</p>
                       </div>
                     </>
                   )}
-                  <p className="text-[9px] leading-4 text-muted-foreground">A custom template replaces the pattern and border on this page. Title pages also hide the page number.</p>
+                  <p className="text-2xs leading-4 text-muted-foreground">A custom template replaces the pattern and border on this page. Title pages also hide the page number.</p>
                 </section>
               </TabsContent>
-            </Tabs>
+  )
+}
 
-            <div className="p-[18px]">
-              <Button className="w-full bg-[#25231f] hover:bg-[#3c3933] xl:hidden" onClick={exportPdf}>
+function getPrintInstructions(settings: Settings, printPass: PrintPass) {
+  if (printPass === "all") {
+    const edge = settings.binding === "yotsume" && !settings.yotsumeTwoUp && settings.yotsumeOrientation === "portrait" ? "long" : "short"
+    return <>In the print dialog, choose Save as PDF, actual size, double-sided, and flip on the {edge} edge.</>
+  }
+  if (printPass === "fronts") return "Print at actual size, then reload the stack without reordering it and export the backs."
+  if (printPass === "guide") return "Print the separate punch guide at actual size."
+  return "Use reversed backs when the last front sheet is on top of the printed stack. Use same-order backs when the first is on top."
+}
+
+function needsSeparateGuideNote(printPass: PrintPass) {
+  return printPass === "fronts" || printPass === "backs" || printPass === "backs-reversed"
+}
+
+function PrintInstructions({ model }: { model: AppModel }) {
+  const { settings, printPass, exportPdf } = model
+  return (
+            <div className="p-4.5">
+              <Button className="w-full bg-primary hover:bg-primary-hover xl:hidden" onClick={exportPdf}>
                 <Download /> Export PDF
               </Button>
-              <p className="mt-3 text-[10px] leading-4 text-muted-foreground">
-                {printPass === "all"
-                  ? <>In the print dialog, choose Save as PDF, actual size, double-sided, and flip on the {settings.binding === "yotsume" && !settings.yotsumeTwoUp && settings.yotsumeOrientation === "portrait" ? "long" : "short"} edge.</>
-                  : printPass === "fronts"
-                    ? "Print at actual size, then reload the stack without reordering it and export the backs."
-                    : printPass === "guide"
-                      ? "Print the separate punch guide at actual size."
-                      : "Use reversed backs when the last front sheet is on top of the printed stack. Use same-order backs when the first is on top."}
-                {(printPass === "fronts" || printPass === "backs" || printPass === "backs-reversed") && settings.punchHolePlacement === "separate" && " Export the punch guide separately when needed."}
+              <p className="mt-3 text-caption leading-4 text-muted-foreground">
+                {getPrintInstructions(settings, printPass)}
+                {needsSeparateGuideNote(printPass) && settings.punchHolePlacement === "separate" && " Export the punch guide separately when needed."}
               </p>
             </div>
+  )
+}
+
+function Properties({ model }: { model: AppModel }) {
+  const { settings, printPass, exportPdf } = model
+  return (
+          <aside className="border-t bg-background lg:col-span-2 xl:col-span-1 xl:h-full xl:overflow-y-auto xl:border-t-0 xl:border-l">
+            <div className="px-4.5 pt-4.5 pb-2">
+              <h2 className="font-serif text-heading">Properties</h2>
+            </div>
+
+            <Tabs defaultValue="style" className="gap-0">
+              <TabBar className="px-4.5">
+                <TabBarTrigger value="style">STYLE</TabBarTrigger>
+                <TabBarTrigger value="layout">LAYOUT</TabBarTrigger>
+                <TabBarTrigger value="page">PAGE</TabBarTrigger>
+              </TabBar>
+
+              <div className="flex items-center gap-3 border-b bg-muted px-4.5 py-3.5">
+                <span className="grid size-8.5 place-items-center rounded-md border bg-background"><Hash className="size-4 text-ring" /></span>
+                <div>
+                  <p className="text-xs font-semibold">Page style</p>
+                  <p className="text-2xs text-muted-foreground">Pattern · margins · numbering</p>
+                </div>
+              </div>
+
+              <StyleTab model={model} />
+
+              <LayoutTab model={model} />
+
+              <PageTab model={model} />
+            </Tabs>
+
+            <PrintInstructions model={model} />
           </aside>
+  )
+}
+
+function App() {
+  const model = useAppModel()
+  return (
+    <>
+      <div className="screen-app min-h-svh bg-canvas">
+        <AppHeader model={model} />
+        <div className="app-grid grid">
+          <BookSetup model={model} />
+          <Preview model={model} />
+          <Properties model={model} />
         </div>
       </div>
-      {printSettings && <PrintDocument settings={printSettings.settings} pass={printSettings.pass} />}
+      {model.printSettings && <PrintDocument settings={model.printSettings.settings} pass={model.printSettings.pass} />}
     </>
   )
 }

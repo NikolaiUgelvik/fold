@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "test": "node --test src/lib/*.test.ts",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "fallow": "fallow dead-code --fail-on-issues && fallow dupes --fail-on-issues && fallow health --css --fail-on-issues"
   },
   "dependencies": {
     "clsx": "^2.1.1",
@@ -15,7 +16,8 @@
     "radix-ui": "^1.6.7",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.6.0",
+    "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
@@ -23,7 +25,7 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.5",
-    "tailwindcss": "^4.3.3",
+    "fallow": "^3.15.0",
     "typescript": "~6.0.2",
     "vite": "^8.0.10"
   }

@@ -46,11 +46,6 @@ test("imposes Japanese stab binding as full-sheet leaves", () => {
 test("optionally imposes Japanese stab binding as two-up cut leaves", () => {
   assert.deepEqual(
     createImposition({ binding: "yotsume", signatures: 9, sheetsPerSignature: 2, twoUp: true }),
-    [
-      { signature: 1, sheet: 1, side: "front", pages: [1, 3] },
-      { signature: 1, sheet: 1, side: "back", pages: [4, 2] },
-      { signature: 1, sheet: 2, side: "front", pages: [5, 7] },
-      { signature: 1, sheet: 2, side: "back", pages: [8, 6] },
-    ],
+    JSON.parse('[{"signature":1,"sheet":1,"side":"front","pages":[1,3]},{"signature":1,"sheet":1,"side":"back","pages":[4,2]},{"signature":1,"sheet":2,"side":"front","pages":[5,7]},{"signature":1,"sheet":2,"side":"back","pages":[8,6]}]'),
   )
 })

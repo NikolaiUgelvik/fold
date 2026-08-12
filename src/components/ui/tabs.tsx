@@ -19,7 +19,7 @@ function TabsList({ className, ...props }: React.ComponentProps<typeof TabsPrimi
     <TabsPrimitive.List
       data-slot="tabs-list"
       data-variant="line"
-      className={cn("group/tabs-list inline-flex h-9 w-fit items-center justify-center gap-1 bg-transparent p-[3px] text-muted-foreground", className)}
+      className={cn("group/tabs-list inline-flex h-9 w-fit items-center justify-center gap-1 bg-transparent p-0.75 text-muted-foreground", className)}
       {...props}
     />
   )
@@ -30,7 +30,7 @@ function TabsTrigger({ className, ...props }: React.ComponentProps<typeof TabsPr
     <TabsPrimitive.Trigger
       data-slot="tabs-trigger"
       className={cn(
-        "relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent bg-transparent px-2 py-1 text-sm font-medium whitespace-nowrap text-foreground/60 transition-all hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none dark:text-muted-foreground dark:hover:text-foreground dark:data-[state=active]:border-transparent dark:data-[state=active]:bg-transparent dark:data-[state=active]:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative inline-flex tab-trigger-height flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent bg-transparent px-2 py-1 text-sm font-medium whitespace-nowrap text-foreground/60 transition-all hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none dark:text-muted-foreground dark:hover:text-foreground dark:data-[state=active]:border-transparent dark:data-[state=active]:bg-transparent dark:data-[state=active]:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         "after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-foreground after:opacity-0 after:transition-opacity data-[state=active]:after:opacity-100",
         className,
       )}
@@ -46,7 +46,7 @@ function TabBar({ className, ...props }: React.ComponentProps<typeof TabsPrimiti
 function TabBarTrigger({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.Trigger>) {
   return (
     <TabsTrigger
-      className={cn("h-full flex-none items-end rounded-none px-0 pb-1 text-[11px] font-bold tracking-[0.1em] data-[state=active]:text-[#c9823b] after:bg-[#c9823b]", className)}
+      className={cn("h-full flex-none items-end rounded-none px-0 pb-1 text-label font-bold tracking-label data-[state=active]:text-ring after:bg-ring", className)}
       {...props}
     />
   )
@@ -56,4 +56,4 @@ function TabsContent({ className, ...props }: React.ComponentProps<typeof TabsPr
   return <TabsPrimitive.Content data-slot="tabs-content" className={cn("flex-1 outline-none", className)} {...props} />
 }
 
-export { TabBar, TabBarTrigger, Tabs, TabsContent, TabsList, TabsTrigger }
+export { TabBar, TabBarTrigger, Tabs, TabsContent }
