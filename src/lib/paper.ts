@@ -28,10 +28,10 @@ export function getOrientedPaperSize(id: PaperId, orientation: Orientation) {
 }
 
 export function getHalfSheetPageSize(id: PaperId, orientation: Orientation) {
-  const paper = getPaperSize(id)
+  const page = getFoldedPageSize(id)
   return orientation === "portrait"
-    ? { width: paper.width / 2, height: paper.height }
-    : { width: paper.height, height: paper.width / 2 }
+    ? page
+    : { width: page.height, height: page.width }
 }
 
 export function formatMillimeters(value: number) {

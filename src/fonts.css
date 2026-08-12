@@ -33,7 +33,7 @@
 @font-face {
   font-family: 'Libre Baskerville';
   font-style: italic;
-  font-weight: 400;
+  font-weight: 400 700;
   font-display: swap;
   src: url(/fonts/libre-baskerville-italic-400.woff2) format('woff2');
   unicode-range: U+20, U+28-29, U+30-39, U+42-44, U+47, U+49, U+4c-4d, U+50, U+53, U+56, U+61-63, U+65-69, U+6b-6c, U+6e-70, U+72-74, U+76-7a;
@@ -41,35 +41,17 @@
 
 @font-face {
   font-family: 'Libre Baskerville';
-  font-style: italic;
-  font-weight: 700;
-  font-display: swap;
-  src: url(/fonts/libre-baskerville-italic-700.woff2) format('woff2');
-  unicode-range: U+20, U+28-29, U+30-39, U+42-44, U+47, U+49, U+4c-4d, U+50, U+53, U+56, U+61-63, U+65-69, U+6b-6c, U+6e-70, U+72-74, U+76-7a;
-}
-
-@font-face {
-  font-family: 'Libre Baskerville';
   font-style: normal;
-  font-weight: 400;
+  font-weight: 400 700;
   font-display: swap;
   src: url(/fonts/libre-baskerville-normal-400.woff2) format('woff2');
   unicode-range: U+20, U+28-29, U+30-39, U+42-44, U+47, U+49, U+4c-4d, U+50, U+53, U+56, U+61-63, U+65-69, U+6b-6c, U+6e-70, U+72-74, U+76-7a;
 }
 
 @font-face {
-  font-family: 'Libre Baskerville';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url(/fonts/libre-baskerville-normal-700.woff2) format('woff2');
-  unicode-range: U+20, U+28-29, U+30-39, U+42-44, U+47, U+49, U+4c-4d, U+50, U+53, U+56, U+61-63, U+65-69, U+6b-6c, U+6e-70, U+72-74, U+76-7a;
-}
-
-@font-face {
   font-family: 'Lora';
   font-style: italic;
-  font-weight: 400;
+  font-weight: 400 700;
   font-display: swap;
   src: url(/fonts/lora-italic-400.woff2) format('woff2');
   unicode-range: U+20, U+28-29, U+30-39, U+42-44, U+47, U+49, U+4c-4d, U+50, U+53, U+56, U+61-63, U+65-69, U+6b-6c, U+6e-70, U+72-74, U+76-7a;
@@ -77,35 +59,17 @@
 
 @font-face {
   font-family: 'Lora';
-  font-style: italic;
-  font-weight: 700;
-  font-display: swap;
-  src: url(/fonts/lora-italic-700.woff2) format('woff2');
-  unicode-range: U+20, U+28-29, U+30-39, U+42-44, U+47, U+49, U+4c-4d, U+50, U+53, U+56, U+61-63, U+65-69, U+6b-6c, U+6e-70, U+72-74, U+76-7a;
-}
-
-@font-face {
-  font-family: 'Lora';
   font-style: normal;
-  font-weight: 400;
+  font-weight: 400 700;
   font-display: swap;
   src: url(/fonts/lora-normal-400.woff2) format('woff2');
   unicode-range: U+20, U+28-29, U+30-39, U+42-44, U+47, U+49, U+4c-4d, U+50, U+53, U+56, U+61-63, U+65-69, U+6b-6c, U+6e-70, U+72-74, U+76-7a;
 }
 
 @font-face {
-  font-family: 'Lora';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url(/fonts/lora-normal-700.woff2) format('woff2');
-  unicode-range: U+20, U+28-29, U+30-39, U+42-44, U+47, U+49, U+4c-4d, U+50, U+53, U+56, U+61-63, U+65-69, U+6b-6c, U+6e-70, U+72-74, U+76-7a;
-}
-
-@font-face {
   font-family: 'Merriweather';
   font-style: italic;
-  font-weight: 400;
+  font-weight: 400 700;
   font-stretch: 100%;
   font-display: swap;
   src: url(/fonts/merriweather-italic-400.woff2) format('woff2');
@@ -114,18 +78,8 @@
 
 @font-face {
   font-family: 'Merriweather';
-  font-style: italic;
-  font-weight: 700;
-  font-stretch: 100%;
-  font-display: swap;
-  src: url(/fonts/merriweather-italic-700.woff2) format('woff2');
-  unicode-range: U+20, U+28-29, U+30-39, U+42-44, U+47, U+49, U+4c-4d, U+50, U+53, U+56, U+61-63, U+65-69, U+6b-6c, U+6e-70, U+72-74, U+76-7a;
-}
-
-@font-face {
-  font-family: 'Merriweather';
   font-style: normal;
-  font-weight: 400;
+  font-weight: 400 700;
   font-stretch: 100%;
   font-display: swap;
   src: url(/fonts/merriweather-normal-400.woff2) format('woff2');
@@ -133,19 +87,9 @@
 }
 
 @font-face {
-  font-family: 'Merriweather';
-  font-style: normal;
-  font-weight: 700;
-  font-stretch: 100%;
-  font-display: swap;
-  src: url(/fonts/merriweather-normal-700.woff2) format('woff2');
-  unicode-range: U+20, U+28-29, U+30-39, U+42-44, U+47, U+49, U+4c-4d, U+50, U+53, U+56, U+61-63, U+65-69, U+6b-6c, U+6e-70, U+72-74, U+76-7a;
-}
-
-@font-face {
   font-family: 'Playfair Display';
   font-style: italic;
-  font-weight: 400;
+  font-weight: 400 700;
   font-display: swap;
   src: url(/fonts/playfair-display-italic-400.woff2) format('woff2');
   unicode-range: U+20, U+28-29, U+30-39, U+42-44, U+47, U+49, U+4c-4d, U+50, U+53, U+56, U+61-63, U+65-69, U+6b-6c, U+6e-70, U+72-74, U+76-7a;
@@ -153,46 +97,19 @@
 
 @font-face {
   font-family: 'Playfair Display';
-  font-style: italic;
-  font-weight: 700;
-  font-display: swap;
-  src: url(/fonts/playfair-display-italic-700.woff2) format('woff2');
-  unicode-range: U+20, U+28-29, U+30-39, U+42-44, U+47, U+49, U+4c-4d, U+50, U+53, U+56, U+61-63, U+65-69, U+6b-6c, U+6e-70, U+72-74, U+76-7a;
-}
-
-@font-face {
-  font-family: 'Playfair Display';
   font-style: normal;
-  font-weight: 400;
+  font-weight: 400 700;
   font-display: swap;
   src: url(/fonts/playfair-display-normal-400.woff2) format('woff2');
   unicode-range: U+20, U+28-29, U+30-39, U+42-44, U+47, U+49, U+4c-4d, U+50, U+53, U+56, U+61-63, U+65-69, U+6b-6c, U+6e-70, U+72-74, U+76-7a;
 }
 
 @font-face {
-  font-family: 'Playfair Display';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url(/fonts/playfair-display-normal-700.woff2) format('woff2');
-  unicode-range: U+20, U+28-29, U+30-39, U+42-44, U+47, U+49, U+4c-4d, U+50, U+53, U+56, U+61-63, U+65-69, U+6b-6c, U+6e-70, U+72-74, U+76-7a;
-}
-
-@font-face {
   font-family: 'Caveat';
   font-style: normal;
-  font-weight: 400;
+  font-weight: 400 700;
   font-display: swap;
   src: url(/fonts/caveat-normal-400.woff2) format('woff2');
-  unicode-range: U+20, U+28-29, U+30-39, U+42-44, U+47, U+49, U+4c-4d, U+50, U+53, U+56, U+61-63, U+65-69, U+6b-6c, U+6e-70, U+72-74, U+76-7a;
-}
-
-@font-face {
-  font-family: 'Caveat';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url(/fonts/caveat-normal-700.woff2) format('woff2');
   unicode-range: U+20, U+28-29, U+30-39, U+42-44, U+47, U+49, U+4c-4d, U+50, U+53, U+56, U+61-63, U+65-69, U+6b-6c, U+6e-70, U+72-74, U+76-7a;
 }
 
@@ -217,18 +134,9 @@
 @font-face {
   font-family: 'Dancing Script';
   font-style: normal;
-  font-weight: 400;
+  font-weight: 400 700;
   font-display: swap;
   src: url(/fonts/dancing-script-normal-400.woff2) format('woff2');
-  unicode-range: U+20, U+28-29, U+30-39, U+42-44, U+47, U+49, U+4c-4d, U+50, U+53, U+56, U+61-63, U+65-69, U+6b-6c, U+6e-70, U+72-74, U+76-7a;
-}
-
-@font-face {
-  font-family: 'Dancing Script';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url(/fonts/dancing-script-normal-700.woff2) format('woff2');
   unicode-range: U+20, U+28-29, U+30-39, U+42-44, U+47, U+49, U+4c-4d, U+50, U+53, U+56, U+61-63, U+65-69, U+6b-6c, U+6e-70, U+72-74, U+76-7a;
 }
 

@@ -42,6 +42,19 @@ test("supports weighted hole groups and empty spacer groups", () => {
   )
 })
 
+test("keeps adjacent non-empty hole groups distinct", () => {
+  const positions = getPunchHoles(
+    { width: 100, height: 130 },
+    "left",
+    1,
+    15,
+    [{ offset: 10, groups: [{ holes: 2, weight: 1 }, { holes: 2, weight: 1 }] }],
+  ).map(({ y }) => y)
+
+  assert.equal(positions.length, 4)
+  assert.equal(new Set(positions).size, 4)
+})
+
 test("supports independent horizontal sets", () => {
   assert.deepEqual(
     getPunchHoles(

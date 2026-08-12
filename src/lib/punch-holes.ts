@@ -29,12 +29,15 @@ export function getPunchHoles(
     if (totalWeight === 0) return []
 
     let y = endInset
-    return set.groups.flatMap((group) => {
+    return set.groups.flatMap((group, groupIndex) => {
       const height = availableHeight * Math.max(0, group.weight) / totalWeight
       const holes = Math.max(0, Math.round(group.holes))
+      const previousHoles = groupIndex === 0 ? 0 : Math.max(0, Math.round(set.groups[groupIndex - 1].holes))
       const points = Array.from({ length: holes }, (_, index) => ({
         x,
-        y: holes === 1 ? y + height / 2 : y + height * index / (holes - 1),
+        y: holes === 1
+          ? y + height / 2
+          : y + height * (previousHoles > 1 ? index + 1 : index) / (previousHoles > 1 ? holes : holes - 1),
       }))
       y += height
       return points

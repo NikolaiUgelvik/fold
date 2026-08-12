@@ -13,9 +13,11 @@ import {
 } from "@/components/ui/select"
 import { TabBar, TabBarTrigger, Tabs, TabsContent } from "@/components/ui/tabs"
 import { parseIndexEntries, type CustomPage } from "@/lib/custom-pages"
+import { ensureFontLoaded } from "@/lib/font-loading"
 import { createImposition, type Binding, type ImpositionSide } from "@/lib/imposition"
-import { showsPageNumber, type PageNumberVisibility } from "@/lib/page-numbering"
-import { formatMillimeters, getCenteredPatternBounds, getFoldedPageSize, getHalfSheetPageSize, getOrientedPaperSize, getPaperSize, paperSizes, type Orientation, type PaperId } from "@/lib/paper"
+import { getPageLayout } from "@/lib/page-layout"
+import { getOuterPageNumberEdge, showsPageNumber, type PageNumberVisibility } from "@/lib/page-numbering"
+import { formatMillimeters, getCenteredPatternBounds, getPaperSize, paperSizes, type Orientation, type PaperId } from "@/lib/paper"
 import { getActivePunchHoleSets, getPageBindingEdge, getPunchHoles, type BindingEdge, type HoleGroup, type HoleSet } from "@/lib/punch-holes"
 import { tropheeColors } from "@/lib/trophee-colors"
 
@@ -123,13 +125,6 @@ function displayedPage(settings: Settings, logicalPage: number) {
   return settings.firstPage + logicalPage - 1
 }
 
-function getFinishedPageSize(settings: Settings) {
-  if (settings.binding !== "yotsume") return getFoldedPageSize(settings.paper)
-  return settings.yotsumeTwoUp
-    ? getHalfSheetPageSize(settings.paper, settings.yotsumeOrientation)
-    : getOrientedPaperSize(settings.paper, settings.yotsumeOrientation)
-}
-
 function NumberField({
   label,
   value,
@@ -196,7 +191,8 @@ function PageSvg({
   ariaLabel?: string
 }) {
   const page = displayedPage(settings, logicalPage)
-  const pageSize = getFinishedPageSize(settings)
+  const pageSize = getPageLayout(settings.paper, settings.binding, settings.yotsumeOrientation, settings.yotsumeTwoUp).page
+  const numberEdge = getOuterPageNumberEdge(page)
   const customPage = settings.customPages[logicalPage]
   const indexEntries = customPage?.type === "index"
     ? parseIndexEntries(customPage.entries).slice(0, Math.floor((pageSize.height - 50) / 9))
@@ -374,14 +370,14 @@ function PageSvg({
       )}
       {customPage?.type !== "title" && showsPageNumber(settings.numberVisibility, logicalPage) && (
         <text
-          x={settings.numberPosition === "center" ? pageSize.width / 2 : logicalPage % 2 === 1 ? pageSize.width - 9 : 9}
+          x={settings.numberPosition === "center" ? pageSize.width / 2 : numberEdge === "right" ? pageSize.width - 9 : 9}
           y={pageSize.height - 7}
           fill={settings.numberColor}
           fontFamily={settings.numberFont}
           fontSize={settings.numberFontSize * 25.4 / 72}
           fontStyle={settings.numberItalic ? "italic" : "normal"}
           fontWeight={settings.numberBold ? 700 : 400}
-          textAnchor={settings.numberPosition === "center" ? "middle" : logicalPage % 2 === 1 ? "end" : "start"}
+          textAnchor={settings.numberPosition === "center" ? "middle" : numberEdge === "right" ? "end" : "start"}
         >
           {page}
         </text>
@@ -436,17 +432,7 @@ function PrintPage({ settings, punchHoleSets, logicalPage }: { settings: Setting
 
 function PrintDocument({ settings }: { settings: Settings }) {
   const punchHoleSets = getActivePunchHoleSets(settings.punchHoleSets, settings.binding !== "yotsume")
-  const paperOrientation = settings.binding === "yotsume"
-    ? settings.yotsumeTwoUp
-      ? settings.yotsumeOrientation === "portrait" ? "landscape" : "portrait"
-      : settings.yotsumeOrientation
-    : "landscape"
-  const paper = getOrientedPaperSize(settings.paper, paperOrientation)
-  const layout = settings.binding === "yotsume"
-    ? settings.yotsumeTwoUp
-      ? settings.yotsumeOrientation === "landscape" ? "stacked" : "side-by-side"
-      : "full"
-    : "side-by-side"
+  const { paper, layout } = getPageLayout(settings.paper, settings.binding, settings.yotsumeOrientation, settings.yotsumeTwoUp)
   const sides = createImposition({
     binding: settings.binding,
     signatures: settings.signatures,
@@ -483,9 +469,9 @@ function App() {
   const [currentPage, setCurrentPage] = useState(1)
   const [zoom, setZoom] = useState(100)
   const [printSettings, setPrintSettings] = useState<Settings | null>(null)
+  const [fontError, setFontError] = useState<string | null>(null)
   const [showPlan, setShowPlan] = useState(false)
 
-  const signatureCount = settings.binding === "coptic" ? settings.signatures : 1
   const punchHoleSets = useMemo(
     () => getActivePunchHoleSets(settings.punchHoleSets, settings.binding !== "yotsume"),
     [settings.binding, settings.punchHoleSets],
@@ -493,17 +479,16 @@ function App() {
   const sides = useMemo(
     () => createImposition({
       binding: settings.binding,
-      signatures: signatureCount,
+      signatures: settings.signatures,
       sheetsPerSignature: settings.sheets,
       twoUp: settings.yotsumeTwoUp,
     }),
-    [settings.binding, settings.sheets, settings.yotsumeTwoUp, signatureCount],
+    [settings.binding, settings.signatures, settings.sheets, settings.yotsumeTwoUp],
   )
-  const totalPages = settings.binding === "yotsume"
-    ? settings.sheets * (settings.yotsumeTwoUp ? 4 : 2)
-    : signatureCount * settings.sheets * 4
+  const totalPages = new Set(sides.flatMap((side) => side.pages)).size
+  const signatureCount = new Set(sides.map((side) => side.signature)).size
   const paper = getPaperSize(settings.paper)
-  const pageSize = getFinishedPageSize(settings)
+  const pageSize = getPageLayout(settings.paper, settings.binding, settings.yotsumeOrientation, settings.yotsumeTwoUp).page
   const pageName = paper.label.split(" → ")[settings.binding === "yotsume" && !settings.yotsumeTwoUp ? 0 : 1]
   const firstSignature = sides.filter((side) => side.signature === 1)
   const visiblePages = Array.from({ length: Math.min(totalPages, 10) }, (_, index) => index + 1)
@@ -549,7 +534,12 @@ function App() {
   }, [totalPages])
 
   useEffect(() => {
-    numberFonts.forEach((font) => void document.fonts.load(`16px ${font.value}`, `${font.label} 1 2 3`).catch(() => undefined))
+    let active = true
+    Promise.all(numberFonts.map((font) => document.fonts.load(`16px ${font.value}`, `${font.label} 1 2 3`)))
+      .catch(() => {
+        if (active) setFontError("Some page-number fonts could not be loaded.")
+      })
+    return () => { active = false }
   }, [])
 
   useEffect(() => {
@@ -563,8 +553,15 @@ function App() {
     }
   }, [printSettings])
 
-  function exportPdf() {
-    setPrintSettings({ ...settings, signatures: signatureCount })
+  async function exportPdf() {
+    try {
+      const font = `${settings.numberItalic ? "italic" : "normal"} ${settings.numberBold ? 700 : 400} 16px ${settings.numberFont}`
+      await ensureFontLoaded(document.fonts, font, "1 2 3")
+      setFontError(null)
+      setPrintSettings(settings)
+    } catch {
+      setFontError(`Could not load ${selectedNumberFont.label}. Export was cancelled.`)
+    }
   }
 
   return (
@@ -580,9 +577,12 @@ function App() {
               <p className="text-[11px] text-muted-foreground">Runs entirely in your browser</p>
             </div>
           </div>
-          <Button className="bg-[#25231f] px-4 hover:bg-[#3c3933]" onClick={exportPdf}>
-            <Download /> Export PDF
-          </Button>
+          <div className="flex items-center gap-3">
+            {fontError && <p className="max-w-48 text-right text-[10px] text-red-700" role="alert">{fontError}</p>}
+            <Button className="bg-[#25231f] px-4 hover:bg-[#3c3933]" onClick={exportPdf}>
+              <Download /> Export PDF
+            </Button>
+          </div>
         </header>
 
         <div className="grid xl:h-[calc(100svh-72px)] lg:grid-cols-[292px_minmax(0,1fr)] xl:grid-cols-[292px_minmax(440px,1fr)_312px]">
@@ -608,12 +608,12 @@ function App() {
                   <div className="grid grid-cols-2 gap-2">
                     {paperSizes.map((paperSize) => {
                       const selected = settings.paper === paperSize.id
-                      const sheetOrientation = settings.yotsumeTwoUp
-                        ? settings.yotsumeOrientation === "portrait" ? "landscape" : "portrait"
-                        : settings.yotsumeOrientation
-                      const sheetSize = settings.binding === "yotsume"
-                        ? getOrientedPaperSize(paperSize.id, sheetOrientation)
-                        : paperSize
+                      const sheetSize = getPageLayout(
+                        paperSize.id,
+                        settings.binding,
+                        settings.yotsumeOrientation,
+                        settings.yotsumeTwoUp,
+                      ).paper
                       return (
                         <button
                           type="button"
@@ -780,7 +780,7 @@ function App() {
             <div className="grid grid-cols-3 divide-x border-b bg-[#d8d3c8]" aria-live="polite">
               {[
                 [totalPages, "pages"],
-                [signatureCount * settings.sheets, "sheets"],
+                [sides.length / 2, "sheets"],
                 [sides.length, "sides"],
               ].map(([value, label]) => (
                 <div className="bg-[#fbfaf6] py-3 text-center" key={label}>
