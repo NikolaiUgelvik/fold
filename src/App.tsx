@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState } from "react"
-import { ArrowLeft, ArrowRight, ArrowUpRight, BookOpen, Download, Hash, Info, Minus, Plus } from "lucide-react"
+import { ArrowLeft, ArrowRight, ArrowUpRight, BookOpen, Download, Hash, Info, Minus, Plus, Trash2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,6 +16,7 @@ import { parseIndexEntries, type CustomPage } from "@/lib/custom-pages"
 import { createImposition, type Binding, type ImpositionSide } from "@/lib/imposition"
 import { showsPageNumber, type PageNumberVisibility } from "@/lib/page-numbering"
 import { formatMillimeters, getCenteredPatternBounds, getFoldedPageSize, getHalfSheetPageSize, getOrientedPaperSize, getPaperSize, paperSizes, type Orientation, type PaperId } from "@/lib/paper"
+import { getPageBindingEdge, getPunchHoles, type BindingEdge, type HoleGroup } from "@/lib/punch-holes"
 import { tropheeColors } from "@/lib/trophee-colors"
 
 const numberFonts = [
@@ -40,6 +41,12 @@ interface Settings {
   binding: Binding
   yotsumeOrientation: Orientation
   yotsumeTwoUp: boolean
+  punchHoleIndicators: boolean
+  bindingEdge: BindingEdge
+  punchHoleInset: number
+  punchHoleEndInset: number
+  punchHoleDiameter: number
+  punchHoleGroups: HoleGroup[]
   paper: PaperId
   previewPaperColor: string
   signatures: number
@@ -58,6 +65,7 @@ interface Settings {
   graphMajorColor: string
   graphCompleteBlocks: boolean
   margin: number
+  gutterMargin: number
   borderWidth: number
   borderColor: string
   numberVisibility: PageNumberVisibility
@@ -75,6 +83,12 @@ const initialSettings: Settings = {
   binding: "coptic",
   yotsumeOrientation: "portrait",
   yotsumeTwoUp: false,
+  punchHoleIndicators: false,
+  bindingEdge: "left",
+  punchHoleInset: 12,
+  punchHoleEndInset: 15,
+  punchHoleDiameter: 2,
+  punchHoleGroups: [{ holes: 4, weight: 1 }],
   paper: "a4",
   previewPaperColor: "#fffef9",
   signatures: 4,
@@ -93,6 +107,7 @@ const initialSettings: Settings = {
   graphMajorColor: "#8295a8",
   graphCompleteBlocks: false,
   margin: 10,
+  gutterMargin: 10,
   borderWidth: 0,
   borderColor: "#c8c3b8",
   numberVisibility: "both",
@@ -194,11 +209,21 @@ function PageSvg({
     ? settings.dotSize / 2
     : Math.max(settings.lineWidth, settings.pattern === "graph" ? settings.graphMajorLineWidth : 0) / 2
   const boundsSpacing = settings.pattern === "graph" && settings.graphCompleteBlocks ? majorSpacing : spacing
-  const centeredPatternBounds = getCenteredPatternBounds(pageSize, settings.margin, boundsSpacing, patternRadius)
+  const folded = settings.binding !== "yotsume"
+  const bindingEdge = getPageBindingEdge(settings.bindingEdge, logicalPage, folded)
+  const pageMargins = {
+    top: settings.margin,
+    right: settings.margin + (bindingEdge === "right" ? settings.gutterMargin : 0),
+    bottom: settings.margin,
+    left: settings.margin + (bindingEdge === "left" ? settings.gutterMargin : 0),
+  }
+  const contentWidth = Math.max(0, pageSize.width - pageMargins.left - pageMargins.right)
+  const contentCenterX = pageMargins.left + contentWidth / 2
+  const centeredPatternBounds = getCenteredPatternBounds(pageSize, pageMargins, boundsSpacing, patternRadius)
   const patternStartX = centeredPatternBounds.x + patternRadius
   const patternStartY = centeredPatternBounds.y + patternRadius
   const patternBounds = settings.pattern === "lines"
-    ? { ...centeredPatternBounds, x: settings.margin, width: pageSize.width - settings.margin * 2 }
+    ? { ...centeredPatternBounds, x: pageMargins.left, width: contentWidth }
     : centeredPatternBounds
   const majorRadius = settings.dotMajorSize / 2
   const majorBounds = settings.dotMajorEvery > 0
@@ -209,7 +234,17 @@ function PageSvg({
         height: Math.floor((centeredPatternBounds.height - patternRadius * 2) / majorSpacing) * majorSpacing + majorRadius * 2,
       }
     : patternBounds
-  const borderInset = settings.margin + settings.borderWidth / 2
+  const borderX = pageMargins.left + settings.borderWidth / 2
+  const borderY = pageMargins.top + settings.borderWidth / 2
+  const punchHoles = getPunchHoles(
+    pageSize,
+    settings.bindingEdge,
+    logicalPage,
+    settings.punchHoleInset,
+    settings.punchHoleEndInset,
+    settings.punchHoleGroups,
+    folded,
+  )
 
   return (
     <svg
@@ -226,7 +261,7 @@ function PageSvg({
             <pattern
               id={patternId}
               patternUnits="userSpaceOnUse"
-              x={settings.pattern === "lines" ? settings.margin : patternStartX - spacing / 2}
+              x={settings.pattern === "lines" ? pageMargins.left : patternStartX - spacing / 2}
               y={patternStartY - spacing / 2}
               width={settings.pattern === "lines" ? pageSize.width : spacing}
               height={spacing}
@@ -293,10 +328,10 @@ function PageSvg({
       )}
       {!customPage && settings.borderWidth > 0 && (
         <rect
-          x={borderInset}
-          y={borderInset}
-          width={pageSize.width - borderInset * 2}
-          height={pageSize.height - borderInset * 2}
+          x={borderX}
+          y={borderY}
+          width={Math.max(0, contentWidth - settings.borderWidth)}
+          height={Math.max(0, pageSize.height - pageMargins.top - pageMargins.bottom - settings.borderWidth)}
           fill="none"
           stroke={settings.borderColor}
           strokeWidth={settings.borderWidth}
@@ -304,31 +339,38 @@ function PageSvg({
       )}
       {customPage?.type === "title" && (
         <g fill="#30302c" fontFamily="Georgia, serif" textAnchor="middle">
-          <text x={pageSize.width / 2} y={pageSize.height * 0.44} fontSize={customPage.title.length > 24 ? 6 : 9} fontWeight="bold">
+          <text x={contentCenterX} y={pageSize.height * 0.44} fontSize={customPage.title.length > 24 ? 6 : 9} fontWeight="bold">
             {customPage.title}
           </text>
-          <text x={pageSize.width / 2} y={pageSize.height * 0.52} fontSize="4">
+          <text x={contentCenterX} y={pageSize.height * 0.52} fontSize="4">
             {customPage.subtitle}
           </text>
         </g>
       )}
       {customPage?.type === "index" && (
         <g fill="#30302c" fontFamily="Georgia, serif">
-          <text x={settings.margin} y="22" fontSize="7" fontWeight="bold">{customPage.title}</text>
+          <text x={pageMargins.left} y="22" fontSize="7" fontWeight="bold">{customPage.title}</text>
           {indexEntries.map((entry, index) => {
             const y = 38 + index * 9
             return (
               <g key={`${entry.label}-${index}`}>
-                <text x={settings.margin} y={y} fontSize="3.8">{entry.label}</text>
+                <text x={pageMargins.left} y={y} fontSize="3.8">{entry.label}</text>
                 {entry.page && (
                   <>
-                    <line x1={pageSize.width * 0.58} x2={pageSize.width - settings.margin - 10} y1={y - 1} y2={y - 1} stroke="#908b82" strokeWidth="0.25" strokeDasharray="1 1.5" />
-                    <text x={pageSize.width - settings.margin} y={y} fontSize="3.8" textAnchor="end">{entry.page}</text>
+                    <line x1={pageMargins.left + contentWidth * 0.58} x2={pageSize.width - pageMargins.right - 10} y1={y - 1} y2={y - 1} stroke="#908b82" strokeWidth="0.25" strokeDasharray="1 1.5" />
+                    <text x={pageSize.width - pageMargins.right} y={y} fontSize="3.8" textAnchor="end">{entry.page}</text>
                   </>
                 )}
               </g>
             )
           })}
+        </g>
+      )}
+      {settings.punchHoleIndicators && (
+        <g fill="none" stroke="#30302c" strokeWidth="0.25">
+          {punchHoles.map((hole, index) => (
+            <circle key={index} cx={hole.x} cy={hole.y} r={settings.punchHoleDiameter / 2} />
+          ))}
         </g>
       )}
       {customPage?.type !== "title" && showsPageNumber(settings.numberVisibility, logicalPage) && (
@@ -474,6 +516,12 @@ function App() {
     setSettings((current) => ({ ...current, [key]: value }))
   }
 
+  function updateHoleGroup(index: number, key: keyof HoleGroup, value: number) {
+    update("punchHoleGroups", settings.punchHoleGroups.map((group, groupIndex) => (
+      groupIndex === index ? { ...group, [key]: value } : group
+    )))
+  }
+
   function setCustomPage(page: CustomPage | null) {
     setSettings((current) => {
       const customPages = { ...current.customPages }
@@ -528,13 +576,14 @@ function App() {
           <aside className="border-b bg-[#fbfaf6] lg:border-r lg:border-b-0 xl:h-full xl:overflow-y-auto">
             <div className="px-5 pt-5 pb-4">
               <h2 className="font-serif text-[22px]">Book setup</h2>
-              <p className="mt-1 text-[11px] leading-4 text-muted-foreground">Choose a paper, then tune the construction.</p>
+              <p className="mt-1 text-[11px] leading-4 text-muted-foreground">Choose a binding, then tune the construction.</p>
             </div>
 
-            <Tabs defaultValue="paper" className="gap-0">
+            <Tabs defaultValue="binding" className="gap-0">
               <TabsList className="h-[42px] w-full justify-start gap-5 rounded-none border-b px-5 py-0">
-                <TabsTrigger value="paper" className="h-full flex-none rounded-none px-0 text-[11px] font-bold tracking-[0.1em] data-[state=active]:text-[#c9823b] after:bg-[#c9823b]">PAPER</TabsTrigger>
                 <TabsTrigger value="binding" className="h-full flex-none rounded-none px-0 text-[11px] font-bold tracking-[0.1em] data-[state=active]:text-[#c9823b] after:bg-[#c9823b]">BINDING</TabsTrigger>
+                <TabsTrigger value="paper" className="h-full flex-none rounded-none px-0 text-[11px] font-bold tracking-[0.1em] data-[state=active]:text-[#c9823b] after:bg-[#c9823b]">PAPER</TabsTrigger>
+                <TabsTrigger value="holes" className="h-full flex-none rounded-none px-0 text-[11px] font-bold tracking-[0.1em] data-[state=active]:text-[#c9823b] after:bg-[#c9823b]">HOLES</TabsTrigger>
               </TabsList>
 
               <TabsContent value="paper" className="mt-0">
@@ -596,6 +645,16 @@ function App() {
                   {settings.binding === "yotsume" && (
                     <>
                       <div className="mt-3 grid gap-1.5">
+                        <Label>Binding edge</Label>
+                        <Select value={settings.bindingEdge} onValueChange={(value) => update("bindingEdge", value as BindingEdge)}>
+                          <SelectTrigger className="w-full bg-[#fffdf7]"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="left">Left</SelectItem>
+                            <SelectItem value="right">Right</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="mt-3 grid gap-1.5">
                         <Label>Page orientation</Label>
                         <Select value={settings.yotsumeOrientation} onValueChange={(value) => update("yotsumeOrientation", value as Orientation)}>
                           <SelectTrigger className="w-full bg-[#fffdf7]"><SelectValue /></SelectTrigger>
@@ -633,6 +692,69 @@ function App() {
                           ? "Prints two sequential leaves per sheet. Cut in half, stack in page order, then sew with four-hole stab binding."
                           : "Prints one leaf per sheet. Stack in page order, then sew with four-hole stab binding."
                         : "Each signature is folded separately, then sewn together."}
+                  </p>
+                </section>
+              </TabsContent>
+
+              <TabsContent value="holes" className="mt-0">
+                <section className="border-b p-5">
+                  <label className="flex cursor-pointer items-start gap-2 rounded-md border bg-[#fffdf7] p-3 text-xs">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 size-4 accent-[#c9823b]"
+                      checked={settings.punchHoleIndicators}
+                      onChange={(event) => update("punchHoleIndicators", event.target.checked)}
+                    />
+                    <span>
+                      <strong className="block">Print punch indicators</strong>
+                      <span className="mt-0.5 block text-[9px] leading-4 text-muted-foreground">Add a custom punch pattern to every page.</span>
+                    </span>
+                  </label>
+                  <fieldset className={`mt-3 grid gap-3 ${settings.punchHoleIndicators ? "" : "opacity-45"}`} disabled={!settings.punchHoleIndicators}>
+                    <div className={`grid gap-2 ${settings.binding === "yotsume" ? "grid-cols-2" : "grid-cols-1"}`}>
+                      {settings.binding === "yotsume" && (
+                        <NumberField label="Edge inset (mm)" value={settings.punchHoleInset} min={2} max={Math.max(2, pageSize.width / 2)} step={0.5} onChange={(value) => update("punchHoleInset", value)} />
+                      )}
+                      <NumberField label="End inset (mm)" value={settings.punchHoleEndInset} min={5} max={Math.max(5, pageSize.height / 2 - 1)} step={0.5} onChange={(value) => update("punchHoleEndInset", value)} />
+                    </div>
+                    <NumberField label="Hole diameter (mm)" value={settings.punchHoleDiameter} min={0.5} max={10} step={0.5} onChange={(value) => update("punchHoleDiameter", value)} />
+                    <div className="grid gap-2 border-t pt-3">
+                      <div className="flex items-center justify-between">
+                        <Label>Pattern groups</Label>
+                        <span className="text-[9px] text-muted-foreground">{settings.punchHoleGroups.reduce((total, group) => total + group.holes, 0)} holes</span>
+                      </div>
+                      {settings.punchHoleGroups.map((group, index) => (
+                        <div className="rounded-md border bg-[#fffdf7] p-2" key={index}>
+                          <div className="mb-2 flex items-center justify-between">
+                            <span className="text-[9px] font-bold uppercase tracking-[0.09em] text-muted-foreground">Group {index + 1}</span>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon-sm"
+                              aria-label={`Remove hole group ${index + 1}`}
+                              onClick={() => update("punchHoleGroups", settings.punchHoleGroups.filter((_, groupIndex) => groupIndex !== index))}
+                            >
+                              <Trash2 />
+                            </Button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <NumberField label="Holes" value={group.holes} min={0} max={20} onChange={(value) => updateHoleGroup(index, "holes", value)} />
+                            <NumberField label="Weight" value={group.weight} min={1} max={1000} onChange={(value) => updateHoleGroup(index, "weight", value)} />
+                          </div>
+                        </div>
+                      ))}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => update("punchHoleGroups", [...settings.punchHoleGroups, { holes: 1, weight: 1 }])}
+                      >
+                        <Plus /> Add group
+                      </Button>
+                    </div>
+                  </fieldset>
+                  <p className="mt-3 text-[9px] leading-4 text-muted-foreground">
+                    Weights divide the area between the end insets. Add a zero-hole group as a spacer—for example, 3 / 0 / 3 holes.
+                    {settings.binding !== "yotsume" && " Indicators sit on the center fold."}
                   </p>
                 </section>
               </TabsContent>
@@ -839,9 +961,13 @@ function App() {
                   <SectionTitle>Margins & border</SectionTitle>
                   <div className="grid grid-cols-2 gap-2">
                     <NumberField label="Margin (mm)" value={settings.margin} min={0} max={30} onChange={(value) => update("margin", value)} />
-                    <NumberField label="Border (mm)" value={settings.borderWidth} min={0} max={2} step={0.1} onChange={(value) => update("borderWidth", value)} />
+                    <NumberField label="Gutter (mm)" value={settings.gutterMargin} min={0} max={Math.max(0, pageSize.width - settings.margin * 2 - 10)} step={0.5} onChange={(value) => update("gutterMargin", value)} />
                   </div>
-                  <ColorField label="Border color" value={settings.borderColor} onChange={(value) => update("borderColor", value)} />
+                  <p className="text-[9px] leading-4 text-muted-foreground">The gutter is added to the binding-side margin.</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <NumberField label="Border (mm)" value={settings.borderWidth} min={0} max={2} step={0.1} onChange={(value) => update("borderWidth", value)} />
+                    <ColorField label="Border color" value={settings.borderColor} onChange={(value) => update("borderColor", value)} />
+                  </div>
                 </section>
 
                 <section className="grid gap-3 border-b p-[18px]">

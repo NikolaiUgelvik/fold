@@ -101,6 +101,6 @@
   .print-side[data-layout="full"] .paper-page { width: 100%; }
   .print-side[data-layout="stacked"] { flex-direction: column; }
   .print-side[data-layout="stacked"] .paper-page { width: 100%; height: 50%; }
-  .paper-page + .paper-page { border-left: 0.12mm solid #ddd; }
-  .print-side[data-layout="stacked"] .paper-page + .paper-page { border-top: 0.12mm solid #ddd; border-left: 0; }
+  .paper-page + .paper-page { box-shadow: inset 0.12mm 0 #ddd; }
+  .print-side[data-layout="stacked"] .paper-page + .paper-page { box-shadow: inset 0 0.12mm #ddd; }
 }

@@ -23,6 +23,17 @@ test("provides US tabloid sheets for letter-size pages", () => {
   })
 })
 
+test("centers complete pattern intervals within asymmetric margins", () => {
+  const bounds = getCenteredPatternBounds(
+    { width: 210, height: 297 },
+    { top: 10, right: 10, bottom: 10, left: 30 },
+    10,
+    0,
+  )
+
+  assert.deepEqual(bounds, { x: 30, y: 13.5, width: 170, height: 270 })
+})
+
 test("centers complete pattern intervals", () => {
   const radius = 0.1
   const bounds = getCenteredPatternBounds({ width: 148.5, height: 210 }, 10, 6.5, radius)

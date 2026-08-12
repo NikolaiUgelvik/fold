@@ -38,13 +38,23 @@ export function formatMillimeters(value: number) {
   return Number.isInteger(value) ? String(value) : String(Math.round(value * 100) / 100)
 }
 
-export function getCenteredPatternBounds(page: { width: number; height: number }, margin: number, spacing: number, radius: number) {
-  const width = Math.floor((page.width - margin * 2) / spacing) * spacing
-  const height = Math.floor((page.height - margin * 2) / spacing) * spacing
+export function getCenteredPatternBounds(
+  page: { width: number; height: number },
+  margin: number | { top: number; right: number; bottom: number; left: number },
+  spacing: number,
+  radius: number,
+) {
+  const margins = typeof margin === "number"
+    ? { top: margin, right: margin, bottom: margin, left: margin }
+    : margin
+  const availableWidth = Math.max(0, page.width - margins.left - margins.right)
+  const availableHeight = Math.max(0, page.height - margins.top - margins.bottom)
+  const width = Math.floor(availableWidth / spacing) * spacing
+  const height = Math.floor(availableHeight / spacing) * spacing
 
   return {
-    x: (page.width - width) / 2 - radius,
-    y: (page.height - height) / 2 - radius,
+    x: margins.left + (availableWidth - width) / 2 - radius,
+    y: margins.top + (availableHeight - height) / 2 - radius,
     width: width + radius * 2,
     height: height + radius * 2,
   }
