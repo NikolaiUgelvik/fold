@@ -25,3 +25,14 @@ test("centers complete pattern intervals", () => {
   assert.equal((bounds.width - radius * 2) / 6.5, 19)
   assert.equal((bounds.height - radius * 2) / 6.5, 29)
 })
+
+test("centers graph paper with only complete major blocks", () => {
+  const radius = 0.2
+  const cellSize = 7
+  const bounds = getCenteredPatternBounds({ width: 148.5, height: 210 }, 10, cellSize * 5, radius)
+
+  assert.ok(Math.abs(bounds.x - (148.5 - bounds.x - bounds.width)) < 1e-10)
+  assert.ok(Math.abs(bounds.y - (210 - bounds.y - bounds.height)) < 1e-10)
+  assert.equal((bounds.width - radius * 2) / cellSize, 15)
+  assert.equal((bounds.height - radius * 2) / cellSize, 25)
+})

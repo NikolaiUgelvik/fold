@@ -12,9 +12,29 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { parseIndexEntries, type CustomPage } from "@/lib/custom-pages"
 import { createImposition, type Binding, type ImpositionSide } from "@/lib/imposition"
+import { showsPageNumber, type PageNumberVisibility } from "@/lib/page-numbering"
 import { formatMillimeters, getCenteredPatternBounds, getFoldedPageSize, getPaperSize, paperSizes, type PaperId } from "@/lib/paper"
 import { tropheeColors } from "@/lib/trophee-colors"
+
+const numberFonts = [
+  { label: "Georgia", value: "Georgia, serif" },
+  { label: "DM Serif Display", value: '"DM Serif Display", serif' },
+  { label: "Inter", value: "Inter, sans-serif" },
+  { label: "IBM Plex Mono", value: '"IBM Plex Mono", monospace' },
+  { label: "Playfair Display", value: '"Playfair Display", serif' },
+  { label: "Lora", value: "Lora, serif" },
+  { label: "Merriweather", value: "Merriweather, serif" },
+  { label: "Libre Baskerville", value: '"Libre Baskerville", serif' },
+  { label: "Caveat", value: "Caveat, cursive" },
+  { label: "Dancing Script", value: '"Dancing Script", cursive' },
+  { label: "Great Vibes", value: '"Great Vibes", cursive' },
+  { label: "Pinyon Script", value: '"Pinyon Script", cursive' },
+  { label: "Cinzel Decorative", value: '"Cinzel Decorative", serif' },
+] as const
+
+type NumberFont = (typeof numberFonts)[number]["value"]
 
 interface Settings {
   binding: Binding
@@ -22,7 +42,7 @@ interface Settings {
   previewPaperColor: string
   signatures: number
   sheets: number
-  pattern: "dots" | "lines" | "grid" | "blank"
+  pattern: "dots" | "lines" | "grid" | "graph" | "blank"
   dotSize: number
   dotSpacing: number
   dotMajorEvery: number
@@ -31,16 +51,22 @@ interface Settings {
   lineWidth: number
   lineSpacing: number
   lineColor: string
+  graphMajorEvery: number
+  graphMajorLineWidth: number
+  graphMajorColor: string
+  graphCompleteBlocks: boolean
   margin: number
   borderWidth: number
   borderColor: string
-  numberPosition: "outer" | "center" | "none"
-  numberFont: "Georgia, serif" | "DM Serif Display, serif" | "Inter, sans-serif"
+  numberVisibility: PageNumberVisibility
+  numberPosition: "outer" | "center"
+  numberFont: NumberFont
   numberFontSize: number
   numberColor: string
   numberBold: boolean
   numberItalic: boolean
   firstPage: number
+  customPages: Record<number, CustomPage>
 }
 
 const initialSettings: Settings = {
@@ -58,9 +84,14 @@ const initialSettings: Settings = {
   lineWidth: 0.2,
   lineSpacing: 7,
   lineColor: "#aeb9c4",
+  graphMajorEvery: 5,
+  graphMajorLineWidth: 0.4,
+  graphMajorColor: "#8295a8",
+  graphCompleteBlocks: false,
   margin: 10,
   borderWidth: 0,
   borderColor: "#c8c3b8",
+  numberVisibility: "both",
   numberPosition: "outer",
   numberFont: "Georgia, serif",
   numberFontSize: 9,
@@ -68,6 +99,7 @@ const initialSettings: Settings = {
   numberBold: false,
   numberItalic: false,
   firstPage: 1,
+  customPages: {},
 }
 
 function displayedPage(settings: Settings, logicalPage: number) {
@@ -139,12 +171,19 @@ function PageSvg({
 }) {
   const page = displayedPage(settings, logicalPage)
   const pageSize = getFoldedPageSize(settings.paper)
+  const customPage = settings.customPages[logicalPage]
+  const indexEntries = customPage?.type === "index"
+    ? parseIndexEntries(customPage.entries).slice(0, Math.floor((pageSize.height - 50) / 9))
+    : []
   const spacing = settings.pattern === "dots" ? settings.dotSpacing : settings.lineSpacing
   const patternId = useId()
   const majorPatternId = useId()
-  const majorSpacing = spacing * settings.dotMajorEvery
-  const patternRadius = settings.pattern === "dots" ? settings.dotSize / 2 : settings.lineWidth / 2
-  const centeredPatternBounds = getCenteredPatternBounds(pageSize, settings.margin, spacing, patternRadius)
+  const majorSpacing = spacing * (settings.pattern === "graph" ? settings.graphMajorEvery : settings.dotMajorEvery)
+  const patternRadius = settings.pattern === "dots"
+    ? settings.dotSize / 2
+    : Math.max(settings.lineWidth, settings.pattern === "graph" ? settings.graphMajorLineWidth : 0) / 2
+  const boundsSpacing = settings.pattern === "graph" && settings.graphCompleteBlocks ? majorSpacing : spacing
+  const centeredPatternBounds = getCenteredPatternBounds(pageSize, settings.margin, boundsSpacing, patternRadius)
   const patternStartX = centeredPatternBounds.x + patternRadius
   const patternStartY = centeredPatternBounds.y + patternRadius
   const patternBounds = settings.pattern === "lines"
@@ -170,7 +209,7 @@ function PageSvg({
       aria-hidden={ariaLabel ? undefined : true}
     >
       <rect width={pageSize.width} height={pageSize.height} fill={paperColor} />
-      {settings.pattern !== "blank" && (
+      {!customPage && settings.pattern !== "blank" && (
         <>
           <defs>
             <pattern
@@ -178,7 +217,7 @@ function PageSvg({
               patternUnits="userSpaceOnUse"
               x={settings.pattern === "lines" ? settings.margin : patternStartX - spacing / 2}
               y={patternStartY - spacing / 2}
-              width={settings.pattern === "dots" || settings.pattern === "grid" ? spacing : pageSize.width}
+              width={settings.pattern === "lines" ? pageSize.width : spacing}
               height={spacing}
             >
               {settings.pattern === "dots" ? (
@@ -186,13 +225,13 @@ function PageSvg({
               ) : (
                 <>
                   <line
-                    x2={settings.pattern === "grid" ? spacing : pageSize.width}
+                    x2={settings.pattern === "grid" || settings.pattern === "graph" ? spacing : pageSize.width}
                     y1={spacing / 2}
                     y2={spacing / 2}
                     stroke={settings.lineColor}
                     strokeWidth={settings.lineWidth}
                   />
-                  {settings.pattern === "grid" && (
+                  {(settings.pattern === "grid" || settings.pattern === "graph") && (
                     <line
                       x1={spacing / 2}
                       x2={spacing / 2}
@@ -216,14 +255,32 @@ function PageSvg({
                 <circle cx={majorSpacing / 2} cy={majorSpacing / 2} r={settings.dotMajorSize / 2} fill={settings.dotColor} />
               </pattern>
             )}
+            {settings.pattern === "graph" && (
+              <pattern
+                id={majorPatternId}
+                patternUnits="userSpaceOnUse"
+                x={patternStartX - majorSpacing / 2}
+                y={patternStartY - majorSpacing / 2}
+                width={majorSpacing}
+                height={majorSpacing}
+              >
+                <path
+                  d={`M ${majorSpacing / 2} 0V${majorSpacing}M0 ${majorSpacing / 2}H${majorSpacing}`}
+                  fill="none"
+                  stroke={settings.graphMajorColor}
+                  strokeWidth={settings.graphMajorLineWidth}
+                />
+              </pattern>
+            )}
           </defs>
           <rect {...patternBounds} fill={`url(#${patternId})`} />
           {settings.pattern === "dots" && settings.dotMajorEvery > 0 && (
             <rect {...majorBounds} fill={`url(#${majorPatternId})`} />
           )}
+          {settings.pattern === "graph" && <rect {...patternBounds} fill={`url(#${majorPatternId})`} />}
         </>
       )}
-      {settings.borderWidth > 0 && (
+      {!customPage && settings.borderWidth > 0 && (
         <rect
           x={borderInset}
           y={borderInset}
@@ -234,16 +291,45 @@ function PageSvg({
           strokeWidth={settings.borderWidth}
         />
       )}
-      {settings.numberPosition !== "none" && (
+      {customPage?.type === "title" && (
+        <g fill="#30302c" fontFamily="Georgia, serif" textAnchor="middle">
+          <text x={pageSize.width / 2} y={pageSize.height * 0.44} fontSize={customPage.title.length > 24 ? 6 : 9} fontWeight="bold">
+            {customPage.title}
+          </text>
+          <text x={pageSize.width / 2} y={pageSize.height * 0.52} fontSize="4">
+            {customPage.subtitle}
+          </text>
+        </g>
+      )}
+      {customPage?.type === "index" && (
+        <g fill="#30302c" fontFamily="Georgia, serif">
+          <text x={settings.margin} y="22" fontSize="7" fontWeight="bold">{customPage.title}</text>
+          {indexEntries.map((entry, index) => {
+            const y = 38 + index * 9
+            return (
+              <g key={`${entry.label}-${index}`}>
+                <text x={settings.margin} y={y} fontSize="3.8">{entry.label}</text>
+                {entry.page && (
+                  <>
+                    <line x1={pageSize.width * 0.58} x2={pageSize.width - settings.margin - 10} y1={y - 1} y2={y - 1} stroke="#908b82" strokeWidth="0.25" strokeDasharray="1 1.5" />
+                    <text x={pageSize.width - settings.margin} y={y} fontSize="3.8" textAnchor="end">{entry.page}</text>
+                  </>
+                )}
+              </g>
+            )
+          })}
+        </g>
+      )}
+      {customPage?.type !== "title" && showsPageNumber(settings.numberVisibility, logicalPage) && (
         <text
-          x={settings.numberPosition === "center" ? pageSize.width / 2 : page % 2 === 1 ? pageSize.width - 9 : 9}
+          x={settings.numberPosition === "center" ? pageSize.width / 2 : logicalPage % 2 === 1 ? pageSize.width - 9 : 9}
           y={pageSize.height - 7}
           fill={settings.numberColor}
           fontFamily={settings.numberFont}
           fontSize={settings.numberFontSize * 25.4 / 72}
           fontStyle={settings.numberItalic ? "italic" : "normal"}
           fontWeight={settings.numberBold ? 700 : 400}
-          textAnchor={settings.numberPosition === "center" ? "middle" : page % 2 === 1 ? "end" : "start"}
+          textAnchor={settings.numberPosition === "center" ? "middle" : logicalPage % 2 === 1 ? "end" : "start"}
         >
           {page}
         </text>
@@ -352,15 +438,32 @@ function App() {
       ? "Ruled notebook"
       : settings.pattern === "grid"
         ? "Square-grid notebook"
-        : "Blank notebook"
+        : settings.pattern === "graph"
+          ? "Graph-paper notebook"
+          : "Blank notebook"
+  const selectedNumberFont = numberFonts.find((font) => font.value === settings.numberFont) ?? numberFonts[0]
+  const customPage = settings.customPages[currentPage]
 
   function update<K extends keyof Settings>(key: K, value: Settings[K]) {
     setSettings((current) => ({ ...current, [key]: value }))
   }
 
+  function setCustomPage(page: CustomPage | null) {
+    setSettings((current) => {
+      const customPages = { ...current.customPages }
+      if (page) customPages[currentPage] = page
+      else delete customPages[currentPage]
+      return { ...current, customPages }
+    })
+  }
+
   useEffect(() => {
     setCurrentPage((page) => Math.min(page, totalPages))
   }, [totalPages])
+
+  useEffect(() => {
+    numberFonts.forEach((font) => void document.fonts.load(`16px ${font.value}`, `${font.label} 1 2 3`).catch(() => undefined))
+  }, [])
 
   useEffect(() => {
     if (!printSettings) return
@@ -565,6 +668,7 @@ function App() {
               <TabsList className="h-[42px] w-full justify-start gap-5 rounded-none border-b px-[18px] py-0">
                 <TabsTrigger value="style" className="h-full flex-none rounded-none px-0 text-[10px] font-bold tracking-[0.1em] data-[state=active]:text-[#c9823b] after:bg-[#c9823b]">STYLE</TabsTrigger>
                 <TabsTrigger value="layout" className="h-full flex-none rounded-none px-0 text-[10px] font-bold tracking-[0.1em] data-[state=active]:text-[#c9823b] after:bg-[#c9823b]">LAYOUT</TabsTrigger>
+                <TabsTrigger value="page" className="h-full flex-none rounded-none px-0 text-[10px] font-bold tracking-[0.1em] data-[state=active]:text-[#c9823b] after:bg-[#c9823b]">PAGE</TabsTrigger>
               </TabsList>
 
               <div className="flex items-center gap-3 border-b bg-[#f5f2ea] px-[18px] py-3.5">
@@ -602,6 +706,7 @@ function App() {
                       <SelectItem value="dots">Dot grid</SelectItem>
                       <SelectItem value="lines">Ruled lines</SelectItem>
                       <SelectItem value="grid">Square grid</SelectItem>
+                      <SelectItem value="graph">Graph paper</SelectItem>
                       <SelectItem value="blank">Blank</SelectItem>
                     </SelectContent>
                   </Select>
@@ -619,13 +724,34 @@ function App() {
                       <ColorField label="Dot color" value={settings.dotColor} onChange={(value) => update("dotColor", value)} />
                     </>
                   )}
-                  {(settings.pattern === "lines" || settings.pattern === "grid") && (
+                  {(settings.pattern === "lines" || settings.pattern === "grid" || settings.pattern === "graph") && (
                     <>
                       <div className="grid grid-cols-2 gap-2">
-                        <NumberField label="Line width (mm)" value={settings.lineWidth} min={0.05} max={1} step={0.05} onChange={(value) => update("lineWidth", value)} />
-                        <NumberField label="Spacing (mm)" value={settings.lineSpacing} min={3} max={20} step={0.5} onChange={(value) => update("lineSpacing", value)} />
+                        <NumberField label={settings.pattern === "graph" ? "Thin width (mm)" : "Line width (mm)"} value={settings.lineWidth} min={0.05} max={1} step={0.05} onChange={(value) => update("lineWidth", value)} />
+                        <NumberField label={settings.pattern === "graph" ? "Cell size (mm)" : "Spacing (mm)"} value={settings.lineSpacing} min={3} max={20} step={0.5} onChange={(value) => update("lineSpacing", value)} />
                       </div>
-                      <ColorField label="Line color" value={settings.lineColor} onChange={(value) => update("lineColor", value)} />
+                      <ColorField label={settings.pattern === "graph" ? "Thin line color" : "Line color"} value={settings.lineColor} onChange={(value) => update("lineColor", value)} />
+                    </>
+                  )}
+                  {settings.pattern === "graph" && (
+                    <>
+                      <div className="grid grid-cols-2 gap-2">
+                        <NumberField label="Cells per block" value={settings.graphMajorEvery} min={2} max={20} onChange={(value) => update("graphMajorEvery", value)} />
+                        <NumberField label="Thick width (mm)" value={settings.graphMajorLineWidth} min={0.05} max={2} step={0.05} onChange={(value) => update("graphMajorLineWidth", value)} />
+                      </div>
+                      <ColorField label="Thick line color" value={settings.graphMajorColor} onChange={(value) => update("graphMajorColor", value)} />
+                      <label className="flex cursor-pointer items-start gap-2 rounded-md border bg-[#fffdf7] p-3 text-xs">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 size-4 accent-[#c9823b]"
+                          checked={settings.graphCompleteBlocks}
+                          onChange={(event) => update("graphCompleteBlocks", event.target.checked)}
+                        />
+                        <span>
+                          <strong className="block">Complete blocks only</strong>
+                          <span className="mt-0.5 block text-[9px] leading-4 text-muted-foreground">Remove partial cell groups and center the grid.</span>
+                        </span>
+                      </label>
                     </>
                   )}
                 </section>
@@ -643,53 +769,132 @@ function App() {
 
                 <section className="grid gap-3 border-b p-[18px]">
                   <SectionTitle>Numbering</SectionTitle>
-                  <Select value={settings.numberPosition} onValueChange={(value) => update("numberPosition", value as Settings["numberPosition"])}>
-                    <SelectTrigger className="w-full bg-[#fffdf7]"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="outer">Outer corners</SelectItem>
-                      <SelectItem value="center">Centered</SelectItem>
-                      <SelectItem value="none">Hidden</SelectItem>
-                    </SelectContent>
-                  </Select>
                   <div className="grid grid-cols-2 gap-2">
                     <div className="grid gap-1.5">
-                      <Label>Font</Label>
-                      <Select value={settings.numberFont} onValueChange={(value) => update("numberFont", value as Settings["numberFont"])}>
-                        <SelectTrigger className="w-full bg-[#fffdf7]" aria-label="Page number font"><SelectValue /></SelectTrigger>
+                      <Label>Pages</Label>
+                      <Select value={settings.numberVisibility} onValueChange={(value) => update("numberVisibility", value as PageNumberVisibility)}>
+                        <SelectTrigger className="w-full bg-[#fffdf7]" aria-label="Numbered pages"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="Georgia, serif">Georgia</SelectItem>
-                          <SelectItem value="DM Serif Display, serif">DM Serif</SelectItem>
-                          <SelectItem value="Inter, sans-serif">Inter</SelectItem>
+                          <SelectItem value="both">Left & right</SelectItem>
+                          <SelectItem value="right">Right only</SelectItem>
+                          <SelectItem value="left">Left only</SelectItem>
+                          <SelectItem value="none">Hidden</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
-                    <NumberField label="Size (pt)" value={settings.numberFontSize} min={4} max={72} step={0.5} onChange={(value) => update("numberFontSize", value)} />
-                  </div>
-                  <ColorField label="Number color" value={settings.numberColor} onChange={(value) => update("numberColor", value)} />
-                  <div className="grid gap-1.5">
-                    <Label>Style</Label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        aria-pressed={settings.numberBold}
-                        className={settings.numberBold ? "border-[#c9823b] bg-[#f3e4d1] text-[#a96528]" : ""}
-                        onClick={() => update("numberBold", !settings.numberBold)}
-                      >
-                        <strong>B</strong> Bold
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        aria-pressed={settings.numberItalic}
-                        className={settings.numberItalic ? "border-[#c9823b] bg-[#f3e4d1] text-[#a96528]" : ""}
-                        onClick={() => update("numberItalic", !settings.numberItalic)}
-                      >
-                        <em>I</em> Italic
-                      </Button>
+                    <div className="grid gap-1.5">
+                      <Label>Position</Label>
+                      <Select disabled={settings.numberVisibility === "none"} value={settings.numberPosition} onValueChange={(value) => update("numberPosition", value as Settings["numberPosition"])}>
+                        <SelectTrigger className="w-full bg-[#fffdf7]" aria-label="Page number position"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="outer">Outer corners</SelectItem>
+                          <SelectItem value="center">Centered</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
-                  <NumberField label="Start at" value={settings.firstPage} min={1} max={9999} onChange={(value) => update("firstPage", value)} />
+                  <fieldset disabled={settings.numberVisibility === "none"} className="grid gap-3">
+                    <div className="grid gap-3">
+                      <div className="grid gap-1.5">
+                        <Label>Font</Label>
+                        <Select value={settings.numberFont} onValueChange={(value) => update("numberFont", value as NumberFont)}>
+                          <SelectTrigger className="w-full bg-[#fffdf7]" aria-label="Page number font">
+                            <SelectValue>
+                              <span className="text-base" style={{ fontFamily: selectedNumberFont.value }}>{selectedNumberFont.label} (1 2 3)</span>
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            {numberFonts.map((font) => (
+                              <SelectItem value={font.value} textValue={`${font.label} (1 2 3)`} key={font.value}>
+                                <span className="text-base" style={{ fontFamily: font.value }}>{font.label} (1 2 3)</span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <NumberField label="Size (pt)" value={settings.numberFontSize} min={4} max={72} step={0.5} onChange={(value) => update("numberFontSize", value)} />
+                    </div>
+                    <ColorField label="Number color" value={settings.numberColor} onChange={(value) => update("numberColor", value)} />
+                    <div className="grid gap-1.5">
+                      <Label>Style</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          aria-pressed={settings.numberBold}
+                          className={settings.numberBold ? "border-[#c9823b] bg-[#f3e4d1] text-[#a96528]" : ""}
+                          onClick={() => update("numberBold", !settings.numberBold)}
+                        >
+                          <strong>B</strong> Bold
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          aria-pressed={settings.numberItalic}
+                          className={settings.numberItalic ? "border-[#c9823b] bg-[#f3e4d1] text-[#a96528]" : ""}
+                          onClick={() => update("numberItalic", !settings.numberItalic)}
+                        >
+                          <em>I</em> Italic
+                        </Button>
+                      </div>
+                    </div>
+                    <NumberField label="Start at" value={settings.firstPage} min={1} max={9999} onChange={(value) => update("firstPage", value)} />
+                  </fieldset>
+                </section>
+              </TabsContent>
+
+              <TabsContent value="page" className="mt-0">
+                <section className="grid gap-3 border-b p-[18px]">
+                  <SectionTitle>{`Page ${displayedPage(settings, currentPage)}`}</SectionTitle>
+                  <div className="grid gap-1.5">
+                    <Label>Template</Label>
+                    <Select
+                      value={customPage?.type ?? "default"}
+                      onValueChange={(value) => {
+                        if (value === "title") setCustomPage({ type: "title", title: "", subtitle: "" })
+                        else if (value === "index") setCustomPage({ type: "index", title: "Index", entries: "" })
+                        else setCustomPage(null)
+                      }}
+                    >
+                      <SelectTrigger className="w-full bg-[#fffdf7]"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="default">Default page</SelectItem>
+                        <SelectItem value="title">Title page</SelectItem>
+                        <SelectItem value="index">Index page</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {customPage?.type === "title" && (
+                    <>
+                      <div className="grid gap-1.5">
+                        <Label>Title</Label>
+                        <Input value={customPage.title} maxLength={40} placeholder="My Notebook" onChange={(event) => setCustomPage({ ...customPage, title: event.target.value })} />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label>Subtitle</Label>
+                        <Input value={customPage.subtitle} maxLength={60} placeholder="Name or date" onChange={(event) => setCustomPage({ ...customPage, subtitle: event.target.value })} />
+                      </div>
+                    </>
+                  )}
+                  {customPage?.type === "index" && (
+                    <>
+                      <div className="grid gap-1.5">
+                        <Label>Heading</Label>
+                        <Input value={customPage.title} maxLength={40} onChange={(event) => setCustomPage({ ...customPage, title: event.target.value })} />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label>Entries</Label>
+                        <textarea
+                          className="border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 min-h-32 w-full resize-y rounded-md border bg-[#fffdf7] px-3 py-2 text-sm shadow-xs outline-none focus-visible:ring-[3px]"
+                          value={customPage.entries}
+                          placeholder={"Projects | 4\nNotes | 12"}
+                          onChange={(event) => setCustomPage({ ...customPage, entries: event.target.value })}
+                        />
+                        <p className="text-[9px] leading-4 text-muted-foreground">Use one entry per line. Put a | before its page number.</p>
+                      </div>
+                    </>
+                  )}
+                  <p className="text-[9px] leading-4 text-muted-foreground">A custom template replaces the pattern and border on this page. Title pages also hide the page number.</p>
                 </section>
               </TabsContent>
             </Tabs>
