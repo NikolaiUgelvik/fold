@@ -1,8 +1,22 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { getActivePunchHoleSets, getPageBindingEdge, getPunchHoles, type HoleSet } from "./punch-holes.ts"
+import type { ImpositionSide } from "./imposition.ts"
+import { getActivePunchHoleSets, getPageBindingEdge, getPunchHoles, showsPunchHoles, type HoleSet } from "./punch-holes.ts"
 
 const fourHoles: HoleSet[] = [{ offset: 12, groups: [{ holes: 4, weight: 1 }] }]
+
+test("places punch holes on the selected signature side", () => {
+  const first: ImpositionSide = { signature: 1, sheet: 1, side: "front", pages: [8, 1] }
+  const last: ImpositionSide = { signature: 1, sheet: 2, side: "back", pages: [4, 5] }
+
+  assert.equal(showsPunchHoles("every", first, 2), true)
+  assert.equal(showsPunchHoles("signature-front", first, 2), true)
+  assert.equal(showsPunchHoles("signature-front", last, 2), false)
+  assert.equal(showsPunchHoles("signature-back", last, 2), true)
+  assert.equal(showsPunchHoles("signature-back", first, 2), false)
+  assert.equal(showsPunchHoles("separate", first, 2), false)
+  assert.equal(showsPunchHoles("none", first, 2), false)
+})
 
 test("folded bindings activate only the center-fold set", () => {
   const sets = [...fourHoles, { offset: 20, groups: [{ holes: 2, weight: 1 }] }]

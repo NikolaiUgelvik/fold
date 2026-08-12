@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState } from "react"
-import { ArrowLeft, ArrowRight, ArrowUpRight, BookOpen, Download, Hash, Info, Minus, Plus, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpRight, BookOpen, Download, Hash, Info, Minus, Plus, Trash2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,7 +18,7 @@ import { createImposition, type Binding, type ImpositionSide } from "@/lib/impos
 import { getPageLayout } from "@/lib/page-layout"
 import { getOuterPageNumberEdge, showsPageNumber, type PageNumberVisibility } from "@/lib/page-numbering"
 import { formatMillimeters, getCenteredPatternBounds, getPaperSize, paperSizes, type Orientation, type PaperId } from "@/lib/paper"
-import { getActivePunchHoleSets, getPageBindingEdge, getPunchHoles, type BindingEdge, type HoleGroup, type HoleSet } from "@/lib/punch-holes"
+import { getActivePunchHoleSets, getPageBindingEdge, getPunchHoles, showsPunchHoles, type BindingEdge, type HoleGroup, type HoleSet, type PunchHolePlacement } from "@/lib/punch-holes"
 import { tropheeColors } from "@/lib/trophee-colors"
 
 const numberFonts = [
@@ -43,7 +43,7 @@ interface Settings {
   binding: Binding
   yotsumeOrientation: Orientation
   yotsumeTwoUp: boolean
-  punchHoleIndicators: boolean
+  punchHolePlacement: PunchHolePlacement
   bindingEdge: BindingEdge
   punchHoleEndInset: number
   punchHoleDiameter: number
@@ -84,7 +84,7 @@ const initialSettings: Settings = {
   binding: "coptic",
   yotsumeOrientation: "portrait",
   yotsumeTwoUp: false,
-  punchHoleIndicators: false,
+  punchHolePlacement: "none",
   bindingEdge: "left",
   punchHoleEndInset: 15,
   punchHoleDiameter: 2,
@@ -123,6 +123,19 @@ const initialSettings: Settings = {
 
 function displayedPage(settings: Settings, logicalPage: number) {
   return settings.firstPage + logicalPage - 1
+}
+
+function moveItem<T>(items: T[], from: number, to: number) {
+  const moved = [...items]
+  moved.splice(to, 0, moved.splice(from, 1)[0])
+  return moved
+}
+
+function getPunchGuide(settings: Settings, sides: ImpositionSide[]) {
+  return {
+    settings: { ...settings, pattern: "blank" as const, borderWidth: 0, numberVisibility: "none" as const, customPages: {} },
+    pages: sides[0].pages,
+  }
 }
 
 function NumberField({
@@ -180,6 +193,7 @@ function PageSvg({
   punchHoleSets,
   logicalPage,
   paperColor,
+  showPunchHoles,
   className,
   ariaLabel,
 }: {
@@ -187,6 +201,7 @@ function PageSvg({
   punchHoleSets: HoleSet[]
   logicalPage: number
   paperColor: string
+  showPunchHoles: boolean
   className?: string
   ariaLabel?: string
 }) {
@@ -361,7 +376,7 @@ function PageSvg({
           })}
         </g>
       )}
-      {settings.punchHoleIndicators && (
+      {showPunchHoles && (
         <g fill="none" stroke="#30302c" strokeWidth="0.25">
           {punchHoles.map((hole, index) => (
             <circle key={index} cx={hole.x} cy={hole.y} r={settings.punchHoleDiameter / 2} />
@@ -391,6 +406,7 @@ function PageThumbnail({
   punchHoleSets,
   pageSize,
   logicalPage,
+  showPunchHoles,
   selected,
   onClick,
 }: {
@@ -398,6 +414,7 @@ function PageThumbnail({
   punchHoleSets: HoleSet[]
   pageSize: { width: number; height: number }
   logicalPage: number
+  showPunchHoles: boolean
   selected: boolean
   onClick: () => void
 }) {
@@ -416,16 +433,17 @@ function PageThumbnail({
         punchHoleSets={punchHoleSets}
         logicalPage={logicalPage}
         paperColor={settings.previewPaperColor}
+        showPunchHoles={showPunchHoles}
         className="block h-full w-full"
       />
     </button>
   )
 }
 
-function PrintPage({ settings, punchHoleSets, logicalPage }: { settings: Settings; punchHoleSets: HoleSet[]; logicalPage: number }) {
+function PrintPage({ settings, punchHoleSets, logicalPage, showPunchHoles }: { settings: Settings; punchHoleSets: HoleSet[]; logicalPage: number; showPunchHoles: boolean }) {
   return (
     <div className="paper-page">
-      <PageSvg settings={settings} punchHoleSets={punchHoleSets} logicalPage={logicalPage} paperColor="none" className="block h-full w-full" />
+      <PageSvg settings={settings} punchHoleSets={punchHoleSets} logicalPage={logicalPage} paperColor="none" showPunchHoles={showPunchHoles} className="block h-full w-full" />
     </div>
   )
 }
@@ -439,6 +457,7 @@ function PrintDocument({ settings }: { settings: Settings }) {
     sheetsPerSignature: settings.sheets,
     twoUp: settings.yotsumeTwoUp,
   })
+  const punchGuide = getPunchGuide(settings, sides)
 
   return (
     <div className="print-root" aria-hidden="true">
@@ -453,9 +472,30 @@ function PrintDocument({ settings }: { settings: Settings }) {
           data-side={side.side}
           style={{ width: `${paper.width}mm`, height: `${paper.height}mm` }}
         >
-          {side.pages.map((page) => <PrintPage settings={settings} punchHoleSets={punchHoleSets} logicalPage={page} key={page} />)}
+          {side.pages.map((page) => (
+            <PrintPage
+              settings={settings}
+              punchHoleSets={punchHoleSets}
+              logicalPage={page}
+              showPunchHoles={showsPunchHoles(settings.punchHolePlacement, side, settings.sheets)}
+              key={page}
+            />
+          ))}
         </section>
       ))}
+      {settings.punchHolePlacement === "separate" && (
+        <section className="print-side" data-layout={layout} data-side="punch-guide" style={{ width: `${paper.width}mm`, height: `${paper.height}mm` }}>
+          {punchGuide.pages.map((page) => (
+            <PrintPage
+              settings={punchGuide.settings}
+              punchHoleSets={punchHoleSets}
+              logicalPage={page}
+              showPunchHoles
+              key={page}
+            />
+          ))}
+        </section>
+      )}
     </div>
   )
 }
@@ -471,6 +511,7 @@ function App() {
   const [printSettings, setPrintSettings] = useState<Settings | null>(null)
   const [fontError, setFontError] = useState<string | null>(null)
   const [showPlan, setShowPlan] = useState(false)
+  const [previewPunchGuide, setPreviewPunchGuide] = useState(false)
 
   const punchHoleSets = useMemo(
     () => getActivePunchHoleSets(settings.punchHoleSets, settings.binding !== "yotsume"),
@@ -485,10 +526,18 @@ function App() {
     }),
     [settings.binding, settings.signatures, settings.sheets, settings.yotsumeTwoUp],
   )
+  const punchHolePages = useMemo(
+    () => new Set(sides.filter((side) => showsPunchHoles(settings.punchHolePlacement, side, settings.sheets)).flatMap((side) => side.pages)),
+    [settings.punchHolePlacement, settings.sheets, sides],
+  )
   const totalPages = new Set(sides.flatMap((side) => side.pages)).size
   const signatureCount = new Set(sides.map((side) => side.signature)).size
   const paper = getPaperSize(settings.paper)
-  const pageSize = getPageLayout(settings.paper, settings.binding, settings.yotsumeOrientation, settings.yotsumeTwoUp).page
+  const pageLayout = getPageLayout(settings.paper, settings.binding, settings.yotsumeOrientation, settings.yotsumeTwoUp)
+  const pageSize = pageLayout.page
+  const showPunchGuide = settings.punchHolePlacement === "separate" && previewPunchGuide
+  const punchGuide = getPunchGuide(settings, sides)
+  const guideSides = settings.punchHolePlacement === "separate" ? 1 : 0
   const pageName = paper.label.split(" → ")[settings.binding === "yotsume" && !settings.yotsumeTwoUp ? 0 : 1]
   const firstSignature = sides.filter((side) => side.signature === 1)
   const visiblePages = Array.from({ length: Math.min(totalPages, 10) }, (_, index) => index + 1)
@@ -711,19 +760,28 @@ function App() {
 
               <TabsContent value="holes" className="mt-0">
                 <section className="border-b p-5">
-                  <label className="flex cursor-pointer items-start gap-2 rounded-md border bg-[#fffdf7] p-3 text-xs">
-                    <input
-                      type="checkbox"
-                      className="mt-0.5 size-4 accent-[#c9823b]"
-                      checked={settings.punchHoleIndicators}
-                      onChange={(event) => update("punchHoleIndicators", event.target.checked)}
-                    />
-                    <span>
-                      <strong className="block">Print punch indicators</strong>
-                      <span className="mt-0.5 block text-[9px] leading-4 text-muted-foreground">Add a custom punch pattern to every page.</span>
-                    </span>
-                  </label>
-                  <fieldset className={`mt-3 grid gap-3 ${settings.punchHoleIndicators ? "" : "opacity-45"}`} disabled={!settings.punchHoleIndicators}>
+                  <div className="grid gap-1.5">
+                    <Label>Punch indicators</Label>
+                    <Select
+                      value={settings.punchHolePlacement}
+                      onValueChange={(value) => {
+                        const placement = value as PunchHolePlacement
+                        update("punchHolePlacement", placement)
+                        setPreviewPunchGuide(placement === "separate")
+                      }}
+                    >
+                      <SelectTrigger className="w-full bg-[#fffdf7]"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="every">Every page</SelectItem>
+                        <SelectItem value="signature-front">Each signature · sheet 1 front</SelectItem>
+                        <SelectItem value="signature-back">Each signature · last sheet back</SelectItem>
+                        <SelectItem value="separate">Separate guide sheet</SelectItem>
+                        <SelectItem value="none">None</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[9px] leading-4 text-muted-foreground">A separate guide is appended after the notebook without changing its pagination.</p>
+                  </div>
+                  <fieldset className={`mt-3 grid gap-3 ${settings.punchHolePlacement === "none" ? "opacity-45" : ""}`} disabled={settings.punchHolePlacement === "none"}>
                     <div className="grid grid-cols-2 gap-2">
                       <NumberField label="End inset (mm)" value={settings.punchHoleEndInset} min={5} max={Math.max(5, pageSize.height / 2 - 1)} step={0.5} onChange={(value) => update("punchHoleEndInset", value)} />
                       <NumberField label="Hole diameter (mm)" value={settings.punchHoleDiameter} min={0.5} max={10} step={0.5} onChange={(value) => update("punchHoleDiameter", value)} />
@@ -738,9 +796,17 @@ function App() {
                           <div className="mb-2 flex items-center justify-between">
                             <span className="text-[9px] font-bold uppercase tracking-[0.09em] text-muted-foreground">{settings.binding === "yotsume" ? `Set ${setIndex + 1}` : "Center fold"}</span>
                             {settings.binding === "yotsume" && settings.punchHoleSets.length > 1 && (
-                              <Button type="button" variant="outline" size="icon-sm" aria-label={`Remove hole set ${setIndex + 1}`} onClick={() => update("punchHoleSets", settings.punchHoleSets.filter((_, index) => index !== setIndex))}>
-                                <Trash2 />
-                              </Button>
+                              <div className="flex gap-1">
+                                <Button type="button" variant="outline" size="icon-sm" aria-label={`Move hole set ${setIndex + 1} up`} disabled={setIndex === 0} onClick={() => update("punchHoleSets", moveItem(settings.punchHoleSets, setIndex, setIndex - 1))}>
+                                  <ArrowUp />
+                                </Button>
+                                <Button type="button" variant="outline" size="icon-sm" aria-label={`Move hole set ${setIndex + 1} down`} disabled={setIndex === settings.punchHoleSets.length - 1} onClick={() => update("punchHoleSets", moveItem(settings.punchHoleSets, setIndex, setIndex + 1))}>
+                                  <ArrowDown />
+                                </Button>
+                                <Button type="button" variant="outline" size="icon-sm" aria-label={`Remove hole set ${setIndex + 1}`} onClick={() => update("punchHoleSets", settings.punchHoleSets.filter((_, index) => index !== setIndex))}>
+                                  <Trash2 />
+                                </Button>
+                              </div>
                             )}
                           </div>
                           {settings.binding === "yotsume" && (
@@ -748,12 +814,20 @@ function App() {
                           )}
                           <div className="mt-2 grid gap-2 border-t pt-2">
                             {set.groups.map((group, groupIndex) => (
-                              <div className="grid grid-cols-[1fr_1fr_auto] items-end gap-2" key={groupIndex}>
+                              <div className="grid grid-cols-2 items-end gap-2" key={groupIndex}>
                                 <NumberField label="Holes" value={group.holes} min={0} max={20} onChange={(value) => updateHoleGroup(setIndex, groupIndex, "holes", value)} />
                                 <NumberField label="Weight" value={group.weight} min={1} max={1000} onChange={(value) => updateHoleGroup(setIndex, groupIndex, "weight", value)} />
-                                <Button type="button" variant="outline" size="icon-sm" aria-label={`Remove group ${groupIndex + 1} from set ${setIndex + 1}`} onClick={() => updateHoleSet(setIndex, { groups: set.groups.filter((_, index) => index !== groupIndex) })}>
-                                  <Trash2 />
-                                </Button>
+                                <div className="col-span-2 flex justify-end gap-1">
+                                  <Button type="button" variant="outline" size="icon-sm" aria-label={`Move group ${groupIndex + 1} up in set ${setIndex + 1}`} disabled={groupIndex === 0} onClick={() => updateHoleSet(setIndex, { groups: moveItem(set.groups, groupIndex, groupIndex - 1) })}>
+                                    <ArrowUp />
+                                  </Button>
+                                  <Button type="button" variant="outline" size="icon-sm" aria-label={`Move group ${groupIndex + 1} down in set ${setIndex + 1}`} disabled={groupIndex === set.groups.length - 1} onClick={() => updateHoleSet(setIndex, { groups: moveItem(set.groups, groupIndex, groupIndex + 1) })}>
+                                    <ArrowDown />
+                                  </Button>
+                                  <Button type="button" variant="outline" size="icon-sm" aria-label={`Remove group ${groupIndex + 1} from set ${setIndex + 1}`} onClick={() => updateHoleSet(setIndex, { groups: set.groups.filter((_, index) => index !== groupIndex) })}>
+                                    <Trash2 />
+                                  </Button>
+                                </div>
                               </div>
                             ))}
                             <Button type="button" variant="outline" onClick={() => updateHoleSet(setIndex, { groups: [...set.groups, { holes: 1, weight: 1 }] })}>
@@ -780,8 +854,8 @@ function App() {
             <div className="grid grid-cols-3 divide-x border-b bg-[#d8d3c8]" aria-live="polite">
               {[
                 [totalPages, "pages"],
-                [sides.length / 2, "sheets"],
-                [sides.length, "sides"],
+                [sides.length / 2 + guideSides, "sheets"],
+                [sides.length + guideSides, "sides"],
               ].map(([value, label]) => (
                 <div className="bg-[#fbfaf6] py-3 text-center" key={label}>
                   <strong className="block font-serif text-xl font-normal">{value}</strong>
@@ -799,8 +873,10 @@ function App() {
           <main className="flex min-h-[700px] min-w-0 flex-col bg-[#edeae1] xl:h-full xl:min-h-0">
             <div className="flex h-[60px] shrink-0 items-center justify-between border-b bg-[#f3f0e8] px-5">
               <div>
-                <p className="text-xs font-semibold">Live preview</p>
-                <p className="mt-0.5 text-[10px] text-muted-foreground">{pageName} · {formatMillimeters(pageSize.width)} × {formatMillimeters(pageSize.height)} mm</p>
+                <p className="text-xs font-semibold">{showPunchGuide ? "Punch guide" : "Live preview"}</p>
+                <p className="mt-0.5 text-[10px] text-muted-foreground">
+                  {showPunchGuide ? "Separate sheet" : pageName} · {formatMillimeters(showPunchGuide ? pageLayout.paper.width : pageSize.width)} × {formatMillimeters(showPunchGuide ? pageLayout.paper.height : pageSize.height)} mm
+                </p>
               </div>
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-1">
@@ -812,13 +888,22 @@ function App() {
                     <Plus />
                   </Button>
                 </div>
-                <span className="mr-1 hidden text-[11px] text-muted-foreground sm:inline">Page {currentPage} of {totalPages}</span>
-                <Button variant="outline" size="icon-sm" aria-label="Previous page" disabled={currentPage === 1} onClick={() => setCurrentPage((page) => page - 1)}>
-                  <ArrowLeft />
-                </Button>
-                <Button variant="outline" size="icon-sm" aria-label="Next page" disabled={currentPage === totalPages} onClick={() => setCurrentPage((page) => page + 1)}>
-                  <ArrowRight />
-                </Button>
+                {settings.punchHolePlacement === "separate" && (
+                  <Button variant="outline" className="h-8 px-3 text-xs" onClick={() => setPreviewPunchGuide((shown) => !shown)}>
+                    {showPunchGuide ? "View pages" : "View guide"}
+                  </Button>
+                )}
+                {!showPunchGuide && (
+                  <>
+                    <span className="mr-1 hidden text-[11px] text-muted-foreground sm:inline">Page {currentPage} of {totalPages}</span>
+                    <Button variant="outline" size="icon-sm" aria-label="Previous page" disabled={currentPage === 1} onClick={() => setCurrentPage((page) => page - 1)}>
+                      <ArrowLeft />
+                    </Button>
+                    <Button variant="outline" size="icon-sm" aria-label="Next page" disabled={currentPage === totalPages} onClick={() => setCurrentPage((page) => page + 1)}>
+                      <ArrowRight />
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
 
@@ -826,18 +911,42 @@ function App() {
               <div
                 className="relative m-auto shrink-0"
                 style={{
-                  aspectRatio: `${pageSize.width} / ${pageSize.height}`,
+                  aspectRatio: showPunchGuide
+                    ? `${pageLayout.paper.width} / ${pageLayout.paper.height}`
+                    : `${pageSize.width} / ${pageSize.height}`,
                   height: `min(${zoom * 0.7}vh, ${zoom * 7.4}px)`,
                 }}
               >
-                <PageSvg
-                  settings={settings}
-                  punchHoleSets={punchHoleSets}
-                  logicalPage={currentPage}
-                  paperColor={settings.previewPaperColor}
-                  className="block h-full w-full shadow-[0_18px_34px_rgba(55,49,35,.14)]"
-                  ariaLabel="Notebook page preview"
-                />
+                {showPunchGuide ? (
+                  <div
+                    role="img"
+                    aria-label="Punch guide preview"
+                    className={`grid h-full w-full overflow-hidden bg-[#fffef9] shadow-[0_18px_34px_rgba(55,49,35,.14)] ${pageLayout.layout === "stacked" ? "grid-rows-2 divide-y" : pageLayout.layout === "side-by-side" ? "grid-cols-2 divide-x" : "grid-cols-1"}`}
+                  >
+                    {punchGuide.pages.map((page) => (
+                      <div className="min-h-0 min-w-0 overflow-hidden" key={page}>
+                        <PageSvg
+                          settings={punchGuide.settings}
+                          punchHoleSets={punchHoleSets}
+                          logicalPage={page}
+                          paperColor={settings.previewPaperColor}
+                          showPunchHoles
+                          className="block h-full w-full"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <PageSvg
+                    settings={settings}
+                    punchHoleSets={punchHoleSets}
+                    logicalPage={currentPage}
+                    paperColor={settings.previewPaperColor}
+                    showPunchHoles={punchHolePages.has(currentPage)}
+                    className="block h-full w-full shadow-[0_18px_34px_rgba(55,49,35,.14)]"
+                    ariaLabel="Notebook page preview"
+                  />
+                )}
               </div>
             </div>
 
@@ -868,6 +977,7 @@ function App() {
                     punchHoleSets={punchHoleSets}
                     pageSize={pageSize}
                     logicalPage={page}
+                    showPunchHoles={punchHolePages.has(page)}
                     selected={currentPage === page}
                     onClick={() => setCurrentPage(page)}
                     key={page}

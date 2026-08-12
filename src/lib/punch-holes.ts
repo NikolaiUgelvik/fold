@@ -1,6 +1,15 @@
+import type { ImpositionSide } from "./imposition.ts"
+
 export type BindingEdge = "left" | "right"
+export type PunchHolePlacement = "none" | "every" | "signature-front" | "signature-back" | "separate"
 export interface HoleGroup { holes: number; weight: number }
 export interface HoleSet { offset: number; groups: HoleGroup[] }
+
+export function showsPunchHoles(placement: PunchHolePlacement, side: ImpositionSide, lastSheet: number) {
+  return placement === "every"
+    || placement === "signature-front" && side.sheet === 1 && side.side === "front"
+    || placement === "signature-back" && side.sheet === lastSheet && side.side === "back"
+}
 
 export function getActivePunchHoleSets(sets: HoleSet[], folded: boolean) {
   return folded ? sets.slice(0, 1) : sets
