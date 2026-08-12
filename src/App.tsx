@@ -14,7 +14,7 @@ import {
 import { TabBar, TabBarTrigger, Tabs, TabsContent } from "@/components/ui/tabs"
 import { parseIndexEntries, type CustomPage } from "@/lib/custom-pages"
 import { ensureFontLoaded } from "@/lib/font-loading"
-import { createImposition, type Binding, type ImpositionSide } from "@/lib/imposition"
+import { createImposition, getPrintSides, type Binding, type ImpositionSide, type PrintPass } from "@/lib/imposition"
 import { getPageLayout } from "@/lib/page-layout"
 import { getOuterPageNumberEdge, showsPageNumber, type PageNumberVisibility } from "@/lib/page-numbering"
 import { formatMillimeters, getCenteredPatternBounds, getPaperSize, paperSizes, type Orientation, type PaperId } from "@/lib/paper"
@@ -448,16 +448,19 @@ function PrintPage({ settings, punchHoleSets, logicalPage, showPunchHoles }: { s
   )
 }
 
-function PrintDocument({ settings }: { settings: Settings }) {
+function PrintDocument({ settings, pass }: { settings: Settings; pass: PrintPass }) {
   const punchHoleSets = getActivePunchHoleSets(settings.punchHoleSets, settings.binding !== "yotsume")
   const { paper, layout } = getPageLayout(settings.paper, settings.binding, settings.yotsumeOrientation, settings.yotsumeTwoUp)
-  const sides = createImposition({
+  const allSides = createImposition({
     binding: settings.binding,
     signatures: settings.signatures,
     sheetsPerSignature: settings.sheets,
     twoUp: settings.yotsumeTwoUp,
   })
-  const punchGuide = getPunchGuide(settings, sides)
+  const sides = getPrintSides(allSides, pass)
+  const punchGuide = pass === "guide" || (pass === "all" && settings.punchHolePlacement === "separate")
+    ? getPunchGuide(settings, allSides)
+    : null
 
   return (
     <div className="print-root" aria-hidden="true">
@@ -483,7 +486,7 @@ function PrintDocument({ settings }: { settings: Settings }) {
           ))}
         </section>
       ))}
-      {settings.punchHolePlacement === "separate" && (
+      {punchGuide && (
         <section className="print-side" data-layout={layout} data-side="punch-guide" style={{ width: `${paper.width}mm`, height: `${paper.height}mm` }}>
           {punchGuide.pages.map((page) => (
             <PrintPage
@@ -508,7 +511,8 @@ function App() {
   const [settings, setSettings] = useState(initialSettings)
   const [currentPage, setCurrentPage] = useState(1)
   const [zoom, setZoom] = useState(100)
-  const [printSettings, setPrintSettings] = useState<Settings | null>(null)
+  const [printSettings, setPrintSettings] = useState<{ settings: Settings; pass: PrintPass } | null>(null)
+  const [printPass, setPrintPass] = useState<PrintPass>("all")
   const [fontError, setFontError] = useState<string | null>(null)
   const [showPlan, setShowPlan] = useState(false)
   const [previewPunchGuide, setPreviewPunchGuide] = useState(false)
@@ -607,7 +611,7 @@ function App() {
       const font = `${settings.numberItalic ? "italic" : "normal"} ${settings.numberBold ? 700 : 400} 16px ${settings.numberFont}`
       await ensureFontLoaded(document.fonts, font, "1 2 3")
       setFontError(null)
-      setPrintSettings(settings)
+      setPrintSettings({ settings, pass: printPass })
     } catch {
       setFontError(`Could not load ${selectedNumberFont.label}. Export was cancelled.`)
     }
@@ -626,10 +630,20 @@ function App() {
               <p className="text-[11px] text-muted-foreground">Runs entirely in your browser</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             {fontError && <p className="max-w-48 text-right text-[10px] text-red-700" role="alert">{fontError}</p>}
-            <Button className="bg-[#25231f] px-4 hover:bg-[#3c3933]" onClick={exportPdf}>
-              <Download /> Export PDF
+            <Select value={printPass} onValueChange={(value) => setPrintPass(value as PrintPass)}>
+              <SelectTrigger className="w-32 bg-[#fffdf7]" aria-label="Print pass"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All sides</SelectItem>
+                <SelectItem value="fronts">Fronts only</SelectItem>
+                <SelectItem value="backs">Backs only</SelectItem>
+                <SelectItem value="backs-reversed">Backs reversed</SelectItem>
+                {settings.punchHolePlacement === "separate" && <SelectItem value="guide">Punch guide only</SelectItem>}
+              </SelectContent>
+            </Select>
+            <Button className="bg-[#25231f] px-3 hover:bg-[#3c3933]" aria-label="Export PDF" onClick={exportPdf}>
+              <Download /> <span className="hidden sm:inline">Export PDF</span>
             </Button>
           </div>
         </header>
@@ -767,6 +781,7 @@ function App() {
                       onValueChange={(value) => {
                         const placement = value as PunchHolePlacement
                         update("punchHolePlacement", placement)
+                        if (placement !== "separate" && printPass === "guide") setPrintPass("all")
                         setPreviewPunchGuide(placement === "separate")
                       }}
                     >
@@ -1235,12 +1250,21 @@ function App() {
               <Button className="w-full bg-[#25231f] hover:bg-[#3c3933] xl:hidden" onClick={exportPdf}>
                 <Download /> Export PDF
               </Button>
-              <p className="mt-3 text-[10px] leading-4 text-muted-foreground">In the print dialog, choose Save as PDF, actual size, double-sided, and flip on the {settings.binding === "yotsume" && !settings.yotsumeTwoUp && settings.yotsumeOrientation === "portrait" ? "long" : "short"} edge.</p>
+              <p className="mt-3 text-[10px] leading-4 text-muted-foreground">
+                {printPass === "all"
+                  ? <>In the print dialog, choose Save as PDF, actual size, double-sided, and flip on the {settings.binding === "yotsume" && !settings.yotsumeTwoUp && settings.yotsumeOrientation === "portrait" ? "long" : "short"} edge.</>
+                  : printPass === "fronts"
+                    ? "Print at actual size, then reload the stack without reordering it and export the backs."
+                    : printPass === "guide"
+                      ? "Print the separate punch guide at actual size."
+                      : "Use reversed backs when the last front sheet is on top of the printed stack. Use same-order backs when the first is on top."}
+                {(printPass === "fronts" || printPass === "backs" || printPass === "backs-reversed") && settings.punchHolePlacement === "separate" && " Export the punch guide separately when needed."}
+              </p>
             </div>
           </aside>
         </div>
       </div>
-      {printSettings && <PrintDocument settings={printSettings} />}
+      {printSettings && <PrintDocument settings={printSettings.settings} pass={printSettings.pass} />}
     </>
   )
 }

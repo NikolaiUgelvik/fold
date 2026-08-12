@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { createImposition } from "./imposition.ts"
+import { createImposition, getPrintSides } from "./imposition.ts"
 
 test("imposes folded sheets in signature order", () => {
   assert.deepEqual(
@@ -16,6 +16,15 @@ test("imposes folded sheets in signature order", () => {
       { signature: 2, sheet: 2, side: "back", pages: [12, 13] },
     ],
   )
+})
+
+test("selects manual duplex passes", () => {
+  const sides = createImposition({ binding: "coptic", signatures: 1, sheetsPerSignature: 2 })
+
+  assert.deepEqual(getPrintSides(sides, "fronts").map((side) => side.pages), [[8, 1], [6, 3]])
+  assert.deepEqual(getPrintSides(sides, "backs").map((side) => side.pages), [[2, 7], [4, 5]])
+  assert.deepEqual(getPrintSides(sides, "backs-reversed").map((side) => side.pages), [[4, 5], [2, 7]])
+  assert.deepEqual(getPrintSides(sides, "guide"), [])
 })
 
 test("saddle stitch always uses one signature", () => {

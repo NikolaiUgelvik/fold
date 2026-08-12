@@ -7,6 +7,15 @@ export interface ImpositionSide {
   pages: number[]
 }
 
+export type PrintPass = "all" | "fronts" | "backs" | "backs-reversed" | "guide"
+
+export function getPrintSides(sides: ImpositionSide[], pass: PrintPass) {
+  if (pass === "all") return sides
+  if (pass === "guide") return []
+  const selected = sides.filter((side) => side.side === (pass === "fronts" ? "front" : "back"))
+  return pass === "backs-reversed" ? selected.reverse() : selected
+}
+
 function positiveInteger(value: number, name: string) {
   if (!Number.isInteger(value) || value < 1) {
     throw new RangeError(`${name} must be a positive integer`)
