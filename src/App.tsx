@@ -128,6 +128,10 @@ interface Settings {
   customPages: Record<number, CustomPage>
 }
 
+type NumberSettingKey = {
+  [Key in keyof Settings]: Settings[Key] extends number ? Key : never
+}[keyof Settings]
+
 const initialSettings: Settings = {
   binding: "coptic",
   yotsumeOrientation: "portrait",
@@ -1845,6 +1849,24 @@ function Preview({ model }: { model: AppModel }) {
 
 function StyleTab({ model }: { model: AppModel }) {
   const { settings, update } = model
+  function settingNumberField(
+    setting: NumberSettingKey,
+    label: string,
+    min: number,
+    max: number,
+    step?: number,
+  ) {
+    return (
+      <NumberField
+        label={label}
+        value={settings[setting]}
+        min={min}
+        max={max}
+        step={step}
+        onChange={(value) => update(setting, value)}
+      />
+    )
+  }
   return (
     <TabsContent value="style" className="mt-0">
       <section className="grid gap-3 border-b p-4.5">
@@ -1900,47 +1922,12 @@ function StyleTab({ model }: { model: AppModel }) {
         {settings.pattern === "dots" && (
           <>
             <NumberFieldPair
-              first={
-                <NumberField
-                  label="Dot size (mm)"
-                  value={settings.dotSize}
-                  min={0.05}
-                  max={2}
-                  step={0.05}
-                  onChange={(value) => update("dotSize", value)}
-                />
-              }
-              second={
-                <NumberField
-                  label="Spacing (mm)"
-                  value={settings.dotSpacing}
-                  min={2}
-                  max={20}
-                  step={0.5}
-                  onChange={(value) => update("dotSpacing", value)}
-                />
-              }
+              first={settingNumberField("dotSize", "Dot size (mm)", 0.05, 2, 0.05)}
+              second={settingNumberField("dotSpacing", "Spacing (mm)", 2, 20, 0.5)}
             />
             <NumberFieldPair
-              first={
-                <NumberField
-                  label="Major interval"
-                  value={settings.dotMajorEvery}
-                  min={0}
-                  max={20}
-                  onChange={(value) => update("dotMajorEvery", value)}
-                />
-              }
-              second={
-                <NumberField
-                  label="Major size (mm)"
-                  value={settings.dotMajorSize}
-                  min={0.05}
-                  max={4}
-                  step={0.05}
-                  onChange={(value) => update("dotMajorSize", value)}
-                />
-              }
+              first={settingNumberField("dotMajorEvery", "Major interval", 0, 20)}
+              second={settingNumberField("dotMajorSize", "Major size (mm)", 0.05, 4, 0.05)}
             />
             <p className="text-2xs leading-4 text-muted-foreground">
               Set the interval to 0 to disable major dots.
@@ -1957,26 +1944,20 @@ function StyleTab({ model }: { model: AppModel }) {
           settings.pattern === "graph") && (
           <>
             <NumberFieldPair
-              first={
-                <NumberField
-                  label={settings.pattern === "graph" ? "Thin width (mm)" : "Line width (mm)"}
-                  value={settings.lineWidth}
-                  min={0.05}
-                  max={1}
-                  step={0.05}
-                  onChange={(value) => update("lineWidth", value)}
-                />
-              }
-              second={
-                <NumberField
-                  label={settings.pattern === "graph" ? "Cell size (mm)" : "Spacing (mm)"}
-                  value={settings.lineSpacing}
-                  min={3}
-                  max={20}
-                  step={0.5}
-                  onChange={(value) => update("lineSpacing", value)}
-                />
-              }
+              first={settingNumberField(
+                "lineWidth",
+                settings.pattern === "graph" ? "Thin width (mm)" : "Line width (mm)",
+                0.05,
+                1,
+                0.05,
+              )}
+              second={settingNumberField(
+                "lineSpacing",
+                settings.pattern === "graph" ? "Cell size (mm)" : "Spacing (mm)",
+                3,
+                20,
+                0.5,
+              )}
             />
             <ColorField
               label={settings.pattern === "graph" ? "Thin line color" : "Line color"}
@@ -1988,25 +1969,8 @@ function StyleTab({ model }: { model: AppModel }) {
         {settings.pattern === "graph" && (
           <>
             <NumberFieldPair
-              first={
-                <NumberField
-                  label="Cells per block"
-                  value={settings.graphMajorEvery}
-                  min={2}
-                  max={20}
-                  onChange={(value) => update("graphMajorEvery", value)}
-                />
-              }
-              second={
-                <NumberField
-                  label="Thick width (mm)"
-                  value={settings.graphMajorLineWidth}
-                  min={0.05}
-                  max={2}
-                  step={0.05}
-                  onChange={(value) => update("graphMajorLineWidth", value)}
-                />
-              }
+              first={settingNumberField("graphMajorEvery", "Cells per block", 2, 20)}
+              second={settingNumberField("graphMajorLineWidth", "Thick width (mm)", 0.05, 2, 0.05)}
             />
             <ColorField
               label="Thick line color"

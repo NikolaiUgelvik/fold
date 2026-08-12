@@ -18,27 +18,34 @@ test("imposes folded sheets in signature order", () => {
 test("selects manual duplex passes", () => {
   const sides = createImposition({ binding: "coptic", signatures: 1, sheetsPerSignature: 2 })
 
-  assert.deepEqual(
-    getPrintSides(sides, "fronts").map((side) => side.pages),
+  for (const [pass, pages] of [
     [
-      [8, 1],
-      [6, 3],
+      "fronts",
+      [
+        [8, 1],
+        [6, 3],
+      ],
     ],
-  )
-  assert.deepEqual(
-    getPrintSides(sides, "backs").map((side) => side.pages),
     [
-      [2, 7],
-      [4, 5],
+      "backs",
+      [
+        [2, 7],
+        [4, 5],
+      ],
     ],
-  )
-  assert.deepEqual(
-    getPrintSides(sides, "backs-reversed").map((side) => side.pages),
     [
-      [4, 5],
-      [2, 7],
+      "backs-reversed",
+      [
+        [4, 5],
+        [2, 7],
+      ],
     ],
-  )
+  ] as const) {
+    assert.deepEqual(
+      getPrintSides(sides, pass).map((side) => side.pages),
+      pages,
+    )
+  }
   assert.deepEqual(getPrintSides(sides, "guide"), [])
 })
 
