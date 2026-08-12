@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { parseIndexEntries, type CustomPage } from "@/lib/custom-pages"
 import { createImposition, type Binding, type ImpositionSide } from "@/lib/imposition"
 import { showsPageNumber, type PageNumberVisibility } from "@/lib/page-numbering"
-import { formatMillimeters, getCenteredPatternBounds, getFoldedPageSize, getPaperSize, paperSizes, type PaperId } from "@/lib/paper"
+import { formatMillimeters, getCenteredPatternBounds, getFoldedPageSize, getHalfSheetPageSize, getOrientedPaperSize, getPaperSize, paperSizes, type Orientation, type PaperId } from "@/lib/paper"
 import { tropheeColors } from "@/lib/trophee-colors"
 
 const numberFonts = [
@@ -38,6 +38,8 @@ type NumberFont = (typeof numberFonts)[number]["value"]
 
 interface Settings {
   binding: Binding
+  yotsumeOrientation: Orientation
+  yotsumeTwoUp: boolean
   paper: PaperId
   previewPaperColor: string
   signatures: number
@@ -71,6 +73,8 @@ interface Settings {
 
 const initialSettings: Settings = {
   binding: "coptic",
+  yotsumeOrientation: "portrait",
+  yotsumeTwoUp: false,
   paper: "a4",
   previewPaperColor: "#fffef9",
   signatures: 4,
@@ -104,6 +108,13 @@ const initialSettings: Settings = {
 
 function displayedPage(settings: Settings, logicalPage: number) {
   return settings.firstPage + logicalPage - 1
+}
+
+function getFinishedPageSize(settings: Settings) {
+  if (settings.binding !== "yotsume") return getFoldedPageSize(settings.paper)
+  return settings.yotsumeTwoUp
+    ? getHalfSheetPageSize(settings.paper, settings.yotsumeOrientation)
+    : getOrientedPaperSize(settings.paper, settings.yotsumeOrientation)
 }
 
 function NumberField({
@@ -170,7 +181,7 @@ function PageSvg({
   ariaLabel?: string
 }) {
   const page = displayedPage(settings, logicalPage)
-  const pageSize = getFoldedPageSize(settings.paper)
+  const pageSize = getFinishedPageSize(settings)
   const customPage = settings.customPages[logicalPage]
   const indexEntries = customPage?.type === "index"
     ? parseIndexEntries(customPage.entries).slice(0, Math.floor((pageSize.height - 50) / 9))
@@ -380,11 +391,22 @@ function PrintPage({ settings, logicalPage }: { settings: Settings; logicalPage:
 }
 
 function PrintDocument({ settings }: { settings: Settings }) {
-  const paper = getPaperSize(settings.paper)
+  const paperOrientation = settings.binding === "yotsume"
+    ? settings.yotsumeTwoUp
+      ? settings.yotsumeOrientation === "portrait" ? "landscape" : "portrait"
+      : settings.yotsumeOrientation
+    : "landscape"
+  const paper = getOrientedPaperSize(settings.paper, paperOrientation)
+  const layout = settings.binding === "yotsume"
+    ? settings.yotsumeTwoUp
+      ? settings.yotsumeOrientation === "landscape" ? "stacked" : "side-by-side"
+      : "full"
+    : "side-by-side"
   const sides = createImposition({
     binding: settings.binding,
     signatures: settings.signatures,
     sheetsPerSignature: settings.sheets,
+    twoUp: settings.yotsumeTwoUp,
   })
 
   return (
@@ -394,6 +416,7 @@ function PrintDocument({ settings }: { settings: Settings }) {
         <section
           className="print-side"
           key={`${side.signature}-${side.sheet}-${side.side}`}
+          data-layout={layout}
           data-signature={side.signature}
           data-sheet={side.sheet}
           data-side={side.side}
@@ -417,19 +440,22 @@ function App() {
   const [printSettings, setPrintSettings] = useState<Settings | null>(null)
   const [showPlan, setShowPlan] = useState(false)
 
-  const signatureCount = settings.binding === "saddle" ? 1 : settings.signatures
+  const signatureCount = settings.binding === "coptic" ? settings.signatures : 1
   const sides = useMemo(
     () => createImposition({
       binding: settings.binding,
       signatures: signatureCount,
       sheetsPerSignature: settings.sheets,
+      twoUp: settings.yotsumeTwoUp,
     }),
-    [settings.binding, settings.sheets, signatureCount],
+    [settings.binding, settings.sheets, settings.yotsumeTwoUp, signatureCount],
   )
-  const totalPages = signatureCount * settings.sheets * 4
+  const totalPages = settings.binding === "yotsume"
+    ? settings.sheets * (settings.yotsumeTwoUp ? 4 : 2)
+    : signatureCount * settings.sheets * 4
   const paper = getPaperSize(settings.paper)
-  const pageSize = getFoldedPageSize(settings.paper)
-  const pageName = paper.label.split(" → ")[1]
+  const pageSize = getFinishedPageSize(settings)
+  const pageName = paper.label.split(" → ")[settings.binding === "yotsume" && !settings.yotsumeTwoUp ? 0 : 1]
   const firstSignature = sides.filter((side) => side.signature === 1)
   const visiblePages = Array.from({ length: Math.min(totalPages, 10) }, (_, index) => index + 1)
   const documentName = settings.pattern === "dots"
@@ -520,6 +546,12 @@ function App() {
                   <div className="grid grid-cols-2 gap-2">
                     {paperSizes.map((paperSize) => {
                       const selected = settings.paper === paperSize.id
+                      const sheetOrientation = settings.yotsumeTwoUp
+                        ? settings.yotsumeOrientation === "portrait" ? "landscape" : "portrait"
+                        : settings.yotsumeOrientation
+                      const sheetSize = settings.binding === "yotsume"
+                        ? getOrientedPaperSize(paperSize.id, sheetOrientation)
+                        : paperSize
                       return (
                         <button
                           type="button"
@@ -528,8 +560,14 @@ function App() {
                           onClick={() => update("paper", paperSize.id)}
                         >
                           <strong className={`block text-xs ${selected ? "text-[#a96528]" : "text-foreground"}`}>{paperSize.id === "tabloid" ? "Tabloid" : paperSize.id.toUpperCase()}</strong>
-                          <span className="mt-1 block text-[9px] text-muted-foreground">{formatMillimeters(paperSize.width)} × {formatMillimeters(paperSize.height)} mm</span>
-                          <span className="mt-0.5 block text-[9px] text-muted-foreground">folds to {paperSize.label.split(" → ")[1]}</span>
+                          <span className="mt-1 block text-[9px] text-muted-foreground">{formatMillimeters(sheetSize.width)} × {formatMillimeters(sheetSize.height)} mm</span>
+                          <span className="mt-0.5 block text-[9px] text-muted-foreground">
+                            {settings.binding !== "yotsume"
+                              ? `folds to ${paperSize.label.split(" → ")[1]}`
+                              : settings.yotsumeTwoUp
+                                ? `cuts to ${paperSize.label.split(" → ")[1]}`
+                                : `full-size ${paperSize.label.split(" → ")[0]}`}
+                          </span>
                         </button>
                       )
                     })}
@@ -552,16 +590,49 @@ function App() {
                     <SelectContent>
                       <SelectItem value="coptic">Coptic / multi-signature</SelectItem>
                       <SelectItem value="saddle">Saddle stitch</SelectItem>
+                      <SelectItem value="yotsume">Japanese stab / yotsume toji</SelectItem>
                     </SelectContent>
                   </Select>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    <NumberField label="Signatures" value={signatureCount} min={1} max={12} disabled={settings.binding === "saddle"} onChange={(value) => update("signatures", value)} />
-                    <NumberField label="Sheets each" value={settings.sheets} min={1} max={12} onChange={(value) => update("sheets", value)} />
+                  {settings.binding === "yotsume" && (
+                    <>
+                      <div className="mt-3 grid gap-1.5">
+                        <Label>Page orientation</Label>
+                        <Select value={settings.yotsumeOrientation} onValueChange={(value) => update("yotsumeOrientation", value as Orientation)}>
+                          <SelectTrigger className="w-full bg-[#fffdf7]"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="portrait">Portrait</SelectItem>
+                            <SelectItem value="landscape">Landscape</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-md border bg-[#fffdf7] p-3 text-xs">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 size-4 accent-[#c9823b]"
+                          checked={settings.yotsumeTwoUp}
+                          onChange={(event) => update("yotsumeTwoUp", event.target.checked)}
+                        />
+                        <span>
+                          <strong className="block">Two-up, cut in half</strong>
+                          <span className="mt-0.5 block text-[9px] leading-4 text-muted-foreground">Print two leaves per sheet instead of using the full sheet.</span>
+                        </span>
+                      </label>
+                    </>
+                  )}
+                  <div className={`mt-3 grid gap-2 ${settings.binding === "yotsume" ? "grid-cols-1" : "grid-cols-2"}`}>
+                    {settings.binding !== "yotsume" && (
+                      <NumberField label="Signatures" value={signatureCount} min={1} max={12} disabled={settings.binding === "saddle"} onChange={(value) => update("signatures", value)} />
+                    )}
+                    <NumberField label={settings.binding === "yotsume" ? "Sheets" : "Sheets each"} value={settings.sheets} min={1} max={12} onChange={(value) => update("sheets", value)} />
                   </div>
                   <p className="mt-3 text-[10px] leading-4 text-muted-foreground">
                     {settings.binding === "saddle"
                       ? "All sheets nest into one signature. Best for smaller books."
-                      : "Each signature is folded separately, then sewn together."}
+                      : settings.binding === "yotsume"
+                        ? settings.yotsumeTwoUp
+                          ? "Prints two sequential leaves per sheet. Cut in half, stack in page order, then sew with four-hole stab binding."
+                          : "Prints one leaf per sheet. Stack in page order, then sew with four-hole stab binding."
+                        : "Each signature is folded separately, then sewn together."}
                   </p>
                 </section>
               </TabsContent>
@@ -632,7 +703,13 @@ function App() {
 
             <section className="shrink-0 border-t bg-[#f3f0e8] px-4 py-3">
               <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-[10px] font-bold uppercase tracking-[0.11em] text-muted-foreground">{showPlan ? "Imposition · first signature" : "Pages"}</h3>
+                <h3 className="text-[10px] font-bold uppercase tracking-[0.11em] text-muted-foreground">
+                  {showPlan
+                    ? settings.binding === "yotsume"
+                      ? settings.yotsumeTwoUp ? "Imposition · cut sheets" : "Imposition · full sheets"
+                      : "Imposition · first signature"
+                    : "Pages"}
+                </h3>
                 <button type="button" className="flex items-center gap-1 text-[10px] font-semibold text-[#446a72]" onClick={() => setShowPlan((shown) => !shown)}>
                   {showPlan ? "View pages" : "View imposition plan"}<ArrowUpRight className="size-3" />
                 </button>
@@ -641,7 +718,7 @@ function App() {
                 {showPlan ? firstSignature.map((side: ImpositionSide) => (
                   <div className="min-w-36 rounded border bg-[#fffdf7] p-2" key={`${side.sheet}-${side.side}`}>
                     <span className="block text-[8px] uppercase tracking-wider text-muted-foreground">Sheet {side.sheet} · {side.side}</span>
-                    <div className="mt-1 grid grid-cols-2 divide-x border text-center font-serif text-xs">
+                    <div className={`mt-1 grid border text-center font-serif text-xs ${side.pages.length > 1 ? "grid-cols-2 divide-x" : ""}`}>
                       {side.pages.map((page) => <span className="py-2" key={page}>{displayedPage(settings, page)}</span>)}
                     </div>
                   </div>
@@ -903,7 +980,7 @@ function App() {
               <Button className="w-full bg-[#25231f] hover:bg-[#3c3933] xl:hidden" onClick={exportPdf}>
                 <Download /> Export PDF
               </Button>
-              <p className="mt-3 text-[10px] leading-4 text-muted-foreground">In the print dialog, choose Save as PDF, actual size, double-sided, and flip on the short edge.</p>
+              <p className="mt-3 text-[10px] leading-4 text-muted-foreground">In the print dialog, choose Save as PDF, actual size, double-sided, and flip on the {settings.binding === "yotsume" && !settings.yotsumeTwoUp && settings.yotsumeOrientation === "portrait" ? "long" : "short"} edge.</p>
             </div>
           </aside>
         </div>

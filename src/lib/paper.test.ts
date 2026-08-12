@@ -1,10 +1,17 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { getCenteredPatternBounds, getFoldedPageSize, getPaperSize } from "./paper.ts"
+import { getCenteredPatternBounds, getFoldedPageSize, getHalfSheetPageSize, getOrientedPaperSize, getPaperSize } from "./paper.ts"
 
 test("folds sheet width in half while preserving height", () => {
   assert.deepEqual(getFoldedPageSize("a3"), { width: 210, height: 297 })
   assert.deepEqual(getFoldedPageSize("letter"), { width: 139.7, height: 215.9 })
+})
+
+test("orients full and half sheets", () => {
+  assert.deepEqual(getOrientedPaperSize("a4", "portrait"), { width: 210, height: 297 })
+  assert.deepEqual(getOrientedPaperSize("a4", "landscape"), { width: 297, height: 210 })
+  assert.deepEqual(getHalfSheetPageSize("a4", "portrait"), { width: 148.5, height: 210 })
+  assert.deepEqual(getHalfSheetPageSize("a4", "landscape"), { width: 210, height: 148.5 })
 })
 
 test("provides US tabloid sheets for letter-size pages", () => {

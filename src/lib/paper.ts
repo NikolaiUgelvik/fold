@@ -9,6 +9,7 @@ export const paperSizes = [
 ] as const
 
 export type PaperId = (typeof paperSizes)[number]["id"]
+export type Orientation = "portrait" | "landscape"
 
 export function getPaperSize(id: PaperId) {
   return paperSizes.find((paper) => paper.id === id) ?? paperSizes[2]
@@ -17,6 +18,20 @@ export function getPaperSize(id: PaperId) {
 export function getFoldedPageSize(id: PaperId) {
   const paper = getPaperSize(id)
   return { width: paper.width / 2, height: paper.height }
+}
+
+export function getOrientedPaperSize(id: PaperId, orientation: Orientation) {
+  const paper = getPaperSize(id)
+  return orientation === "portrait"
+    ? { width: paper.height, height: paper.width }
+    : { width: paper.width, height: paper.height }
+}
+
+export function getHalfSheetPageSize(id: PaperId, orientation: Orientation) {
+  const paper = getPaperSize(id)
+  return orientation === "portrait"
+    ? { width: paper.width / 2, height: paper.height }
+    : { width: paper.height, height: paper.width / 2 }
 }
 
 export function formatMillimeters(value: number) {
