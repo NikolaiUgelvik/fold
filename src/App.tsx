@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState } from "react"
-import { ArrowLeft, ArrowRight, ArrowUpRight, BookOpen, Download, Hash, Info } from "lucide-react"
+import { ArrowLeft, ArrowRight, ArrowUpRight, BookOpen, Download, Hash, Info, Minus, Plus } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -35,6 +35,11 @@ interface Settings {
   borderWidth: number
   borderColor: string
   numberPosition: "outer" | "center" | "none"
+  numberFont: "Georgia, serif" | "DM Serif Display, serif" | "Inter, sans-serif"
+  numberFontSize: number
+  numberColor: string
+  numberBold: boolean
+  numberItalic: boolean
   firstPage: number
 }
 
@@ -57,6 +62,11 @@ const initialSettings: Settings = {
   borderWidth: 0,
   borderColor: "#c8c3b8",
   numberPosition: "outer",
+  numberFont: "Georgia, serif",
+  numberFontSize: 9,
+  numberColor: "#30302c",
+  numberBold: false,
+  numberItalic: false,
   firstPage: 1,
 }
 
@@ -228,9 +238,11 @@ function PageSvg({
         <text
           x={settings.numberPosition === "center" ? pageSize.width / 2 : page % 2 === 1 ? pageSize.width - 9 : 9}
           y={pageSize.height - 7}
-          fill="#30302c"
-          fontFamily="Georgia, serif"
-          fontSize="3.2"
+          fill={settings.numberColor}
+          fontFamily={settings.numberFont}
+          fontSize={settings.numberFontSize * 25.4 / 72}
+          fontStyle={settings.numberItalic ? "italic" : "normal"}
+          fontWeight={settings.numberBold ? 700 : 400}
           textAnchor={settings.numberPosition === "center" ? "middle" : page % 2 === 1 ? "end" : "start"}
         >
           {page}
@@ -315,6 +327,7 @@ function SectionTitle({ children }: { children: string }) {
 function App() {
   const [settings, setSettings] = useState(initialSettings)
   const [currentPage, setCurrentPage] = useState(1)
+  const [zoom, setZoom] = useState(100)
   const [printSettings, setPrintSettings] = useState<Settings | null>(null)
   const [showPlan, setShowPlan] = useState(false)
 
@@ -477,7 +490,16 @@ function App() {
                 <p className="mt-0.5 text-[10px] text-muted-foreground">{pageName} · {formatMillimeters(pageSize.width)} × {formatMillimeters(pageSize.height)} mm</p>
               </div>
               <div className="flex items-center gap-2">
-                <span className="mr-1 text-[11px] text-muted-foreground">Page {currentPage} of {totalPages}</span>
+                <div className="flex items-center gap-1">
+                  <Button variant="outline" size="icon-sm" aria-label="Zoom out" disabled={zoom === 50} onClick={() => setZoom((value) => Math.max(50, value - 10))}>
+                    <Minus />
+                  </Button>
+                  <span className="w-10 text-center text-[10px] text-muted-foreground" aria-live="polite">{zoom}%</span>
+                  <Button variant="outline" size="icon-sm" aria-label="Zoom in" disabled={zoom === 200} onClick={() => setZoom((value) => Math.min(200, value + 10))}>
+                    <Plus />
+                  </Button>
+                </div>
+                <span className="mr-1 hidden text-[11px] text-muted-foreground sm:inline">Page {currentPage} of {totalPages}</span>
                 <Button variant="outline" size="icon-sm" aria-label="Previous page" disabled={currentPage === 1} onClick={() => setCurrentPage((page) => page - 1)}>
                   <ArrowLeft />
                 </Button>
@@ -487,17 +509,21 @@ function App() {
               </div>
             </div>
 
-            <div className="grid min-h-[540px] flex-1 place-items-center p-6 lg:p-8">
-              <div className="grid h-full max-h-[706px] min-h-[500px] w-full max-w-[560px] place-items-center rounded-[10px] border border-[#cac4b7] bg-[#d7d2c7] p-10 shadow-sm">
-                <div className="relative h-[min(58vh,610px)] max-w-full" style={{ aspectRatio: `${pageSize.width} / ${pageSize.height}` }}>
-                  <PageSvg
-                    settings={settings}
-                    logicalPage={currentPage}
-                    paperColor={settings.previewPaperColor}
-                    className="block h-full w-full shadow-[0_18px_34px_rgba(55,49,35,.14)]"
-                    ariaLabel="Notebook page preview"
-                  />
-                </div>
+            <div className="flex min-h-[540px] flex-1 overflow-auto p-4 lg:p-6">
+              <div
+                className="relative m-auto shrink-0"
+                style={{
+                  aspectRatio: `${pageSize.width} / ${pageSize.height}`,
+                  height: `min(${zoom * 0.7}vh, ${zoom * 7.4}px)`,
+                }}
+              >
+                <PageSvg
+                  settings={settings}
+                  logicalPage={currentPage}
+                  paperColor={settings.previewPaperColor}
+                  className="block h-full w-full shadow-[0_18px_34px_rgba(55,49,35,.14)]"
+                  ariaLabel="Notebook page preview"
+                />
               </div>
             </div>
 
@@ -625,6 +651,44 @@ function App() {
                       <SelectItem value="none">Hidden</SelectItem>
                     </SelectContent>
                   </Select>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="grid gap-1.5">
+                      <Label>Font</Label>
+                      <Select value={settings.numberFont} onValueChange={(value) => update("numberFont", value as Settings["numberFont"])}>
+                        <SelectTrigger className="w-full bg-[#fffdf7]" aria-label="Page number font"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Georgia, serif">Georgia</SelectItem>
+                          <SelectItem value="DM Serif Display, serif">DM Serif</SelectItem>
+                          <SelectItem value="Inter, sans-serif">Inter</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <NumberField label="Size (pt)" value={settings.numberFontSize} min={4} max={72} step={0.5} onChange={(value) => update("numberFontSize", value)} />
+                  </div>
+                  <ColorField label="Number color" value={settings.numberColor} onChange={(value) => update("numberColor", value)} />
+                  <div className="grid gap-1.5">
+                    <Label>Style</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        aria-pressed={settings.numberBold}
+                        className={settings.numberBold ? "border-[#c9823b] bg-[#f3e4d1] text-[#a96528]" : ""}
+                        onClick={() => update("numberBold", !settings.numberBold)}
+                      >
+                        <strong>B</strong> Bold
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        aria-pressed={settings.numberItalic}
+                        className={settings.numberItalic ? "border-[#c9823b] bg-[#f3e4d1] text-[#a96528]" : ""}
+                        onClick={() => update("numberItalic", !settings.numberItalic)}
+                      >
+                        <em>I</em> Italic
+                      </Button>
+                    </div>
+                  </div>
                   <NumberField label="Start at" value={settings.firstPage} min={1} max={9999} onChange={(value) => update("firstPage", value)} />
                 </section>
               </TabsContent>
