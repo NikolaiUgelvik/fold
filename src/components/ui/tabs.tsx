@@ -39,8 +39,21 @@ function TabsTrigger({ className, ...props }: React.ComponentProps<typeof TabsPr
   )
 }
 
+function TabBar({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.List>) {
+  return <TabsList className={cn("h-8 w-full justify-start gap-5 rounded-none border-b px-5 py-0", className)} {...props} />
+}
+
+function TabBarTrigger({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.Trigger>) {
+  return (
+    <TabsTrigger
+      className={cn("h-full flex-none items-end rounded-none px-0 pb-1 text-[11px] font-bold tracking-[0.1em] data-[state=active]:text-[#c9823b] after:bg-[#c9823b]", className)}
+      {...props}
+    />
+  )
+}
+
 function TabsContent({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.Content>) {
   return <TabsPrimitive.Content data-slot="tabs-content" className={cn("flex-1 outline-none", className)} {...props} />
 }
 
-export { Tabs, TabsContent, TabsList, TabsTrigger }
+export { TabBar, TabBarTrigger, Tabs, TabsContent, TabsList, TabsTrigger }

@@ -11,12 +11,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { TabBar, TabBarTrigger, Tabs, TabsContent } from "@/components/ui/tabs"
 import { parseIndexEntries, type CustomPage } from "@/lib/custom-pages"
 import { createImposition, type Binding, type ImpositionSide } from "@/lib/imposition"
 import { showsPageNumber, type PageNumberVisibility } from "@/lib/page-numbering"
 import { formatMillimeters, getCenteredPatternBounds, getFoldedPageSize, getHalfSheetPageSize, getOrientedPaperSize, getPaperSize, paperSizes, type Orientation, type PaperId } from "@/lib/paper"
-import { getPageBindingEdge, getPunchHoles, type BindingEdge, type HoleGroup } from "@/lib/punch-holes"
+import { getActivePunchHoleSets, getPageBindingEdge, getPunchHoles, type BindingEdge, type HoleGroup, type HoleSet } from "@/lib/punch-holes"
 import { tropheeColors } from "@/lib/trophee-colors"
 
 const numberFonts = [
@@ -43,10 +43,9 @@ interface Settings {
   yotsumeTwoUp: boolean
   punchHoleIndicators: boolean
   bindingEdge: BindingEdge
-  punchHoleInset: number
   punchHoleEndInset: number
   punchHoleDiameter: number
-  punchHoleGroups: HoleGroup[]
+  punchHoleSets: HoleSet[]
   paper: PaperId
   previewPaperColor: string
   signatures: number
@@ -85,10 +84,9 @@ const initialSettings: Settings = {
   yotsumeTwoUp: false,
   punchHoleIndicators: false,
   bindingEdge: "left",
-  punchHoleInset: 12,
   punchHoleEndInset: 15,
   punchHoleDiameter: 2,
-  punchHoleGroups: [{ holes: 4, weight: 1 }],
+  punchHoleSets: [{ offset: 12, groups: [{ holes: 4, weight: 1 }] }],
   paper: "a4",
   previewPaperColor: "#fffef9",
   signatures: 4,
@@ -184,12 +182,14 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
 
 function PageSvg({
   settings,
+  punchHoleSets,
   logicalPage,
   paperColor,
   className,
   ariaLabel,
 }: {
   settings: Settings
+  punchHoleSets: HoleSet[]
   logicalPage: number
   paperColor: string
   className?: string
@@ -240,9 +240,8 @@ function PageSvg({
     pageSize,
     settings.bindingEdge,
     logicalPage,
-    settings.punchHoleInset,
     settings.punchHoleEndInset,
-    settings.punchHoleGroups,
+    punchHoleSets,
     folded,
   )
 
@@ -393,12 +392,14 @@ function PageSvg({
 
 function PageThumbnail({
   settings,
+  punchHoleSets,
   pageSize,
   logicalPage,
   selected,
   onClick,
 }: {
   settings: Settings
+  punchHoleSets: HoleSet[]
   pageSize: { width: number; height: number }
   logicalPage: number
   selected: boolean
@@ -416,6 +417,7 @@ function PageThumbnail({
     >
       <PageSvg
         settings={settings}
+        punchHoleSets={punchHoleSets}
         logicalPage={logicalPage}
         paperColor={settings.previewPaperColor}
         className="block h-full w-full"
@@ -424,15 +426,16 @@ function PageThumbnail({
   )
 }
 
-function PrintPage({ settings, logicalPage }: { settings: Settings; logicalPage: number }) {
+function PrintPage({ settings, punchHoleSets, logicalPage }: { settings: Settings; punchHoleSets: HoleSet[]; logicalPage: number }) {
   return (
     <div className="paper-page">
-      <PageSvg settings={settings} logicalPage={logicalPage} paperColor="#fffef9" className="block h-full w-full" />
+      <PageSvg settings={settings} punchHoleSets={punchHoleSets} logicalPage={logicalPage} paperColor="#fffef9" className="block h-full w-full" />
     </div>
   )
 }
 
 function PrintDocument({ settings }: { settings: Settings }) {
+  const punchHoleSets = getActivePunchHoleSets(settings.punchHoleSets, settings.binding !== "yotsume")
   const paperOrientation = settings.binding === "yotsume"
     ? settings.yotsumeTwoUp
       ? settings.yotsumeOrientation === "portrait" ? "landscape" : "portrait"
@@ -464,7 +467,7 @@ function PrintDocument({ settings }: { settings: Settings }) {
           data-side={side.side}
           style={{ width: `${paper.width}mm`, height: `${paper.height}mm` }}
         >
-          {side.pages.map((page) => <PrintPage settings={settings} logicalPage={page} key={page} />)}
+          {side.pages.map((page) => <PrintPage settings={settings} punchHoleSets={punchHoleSets} logicalPage={page} key={page} />)}
         </section>
       ))}
     </div>
@@ -483,6 +486,10 @@ function App() {
   const [showPlan, setShowPlan] = useState(false)
 
   const signatureCount = settings.binding === "coptic" ? settings.signatures : 1
+  const punchHoleSets = useMemo(
+    () => getActivePunchHoleSets(settings.punchHoleSets, settings.binding !== "yotsume"),
+    [settings.binding, settings.punchHoleSets],
+  )
   const sides = useMemo(
     () => createImposition({
       binding: settings.binding,
@@ -516,10 +523,16 @@ function App() {
     setSettings((current) => ({ ...current, [key]: value }))
   }
 
-  function updateHoleGroup(index: number, key: keyof HoleGroup, value: number) {
-    update("punchHoleGroups", settings.punchHoleGroups.map((group, groupIndex) => (
-      groupIndex === index ? { ...group, [key]: value } : group
-    )))
+  function updateHoleSet(setIndex: number, change: Partial<HoleSet>) {
+    update("punchHoleSets", settings.punchHoleSets.map((set, index) => index === setIndex ? { ...set, ...change } : set))
+  }
+
+  function updateHoleGroup(setIndex: number, groupIndex: number, key: keyof HoleGroup, value: number) {
+    updateHoleSet(setIndex, {
+      groups: settings.punchHoleSets[setIndex].groups.map((group, index) => (
+        index === groupIndex ? { ...group, [key]: value } : group
+      )),
+    })
   }
 
   function setCustomPage(page: CustomPage | null) {
@@ -574,17 +587,17 @@ function App() {
 
         <div className="grid xl:h-[calc(100svh-72px)] lg:grid-cols-[292px_minmax(0,1fr)] xl:grid-cols-[292px_minmax(440px,1fr)_312px]">
           <aside className="border-b bg-[#fbfaf6] lg:border-r lg:border-b-0 xl:h-full xl:overflow-y-auto">
-            <div className="px-5 pt-5 pb-4">
+            <div className="px-5 pt-5 pb-2">
               <h2 className="font-serif text-[22px]">Book setup</h2>
               <p className="mt-1 text-[11px] leading-4 text-muted-foreground">Choose a binding, then tune the construction.</p>
             </div>
 
             <Tabs defaultValue="binding" className="gap-0">
-              <TabsList className="h-[42px] w-full justify-start gap-5 rounded-none border-b px-5 py-0">
-                <TabsTrigger value="binding" className="h-full flex-none rounded-none px-0 text-[11px] font-bold tracking-[0.1em] data-[state=active]:text-[#c9823b] after:bg-[#c9823b]">BINDING</TabsTrigger>
-                <TabsTrigger value="paper" className="h-full flex-none rounded-none px-0 text-[11px] font-bold tracking-[0.1em] data-[state=active]:text-[#c9823b] after:bg-[#c9823b]">PAPER</TabsTrigger>
-                <TabsTrigger value="holes" className="h-full flex-none rounded-none px-0 text-[11px] font-bold tracking-[0.1em] data-[state=active]:text-[#c9823b] after:bg-[#c9823b]">HOLES</TabsTrigger>
-              </TabsList>
+              <TabBar>
+                <TabBarTrigger value="binding">BINDING</TabBarTrigger>
+                <TabBarTrigger value="paper">PAPER</TabBarTrigger>
+                <TabBarTrigger value="holes">HOLES</TabBarTrigger>
+              </TabBar>
 
               <TabsContent value="paper" className="mt-0">
                 <section className="border-b p-5">
@@ -711,50 +724,54 @@ function App() {
                     </span>
                   </label>
                   <fieldset className={`mt-3 grid gap-3 ${settings.punchHoleIndicators ? "" : "opacity-45"}`} disabled={!settings.punchHoleIndicators}>
-                    <div className={`grid gap-2 ${settings.binding === "yotsume" ? "grid-cols-2" : "grid-cols-1"}`}>
-                      {settings.binding === "yotsume" && (
-                        <NumberField label="Edge inset (mm)" value={settings.punchHoleInset} min={2} max={Math.max(2, pageSize.width / 2)} step={0.5} onChange={(value) => update("punchHoleInset", value)} />
-                      )}
+                    <div className="grid grid-cols-2 gap-2">
                       <NumberField label="End inset (mm)" value={settings.punchHoleEndInset} min={5} max={Math.max(5, pageSize.height / 2 - 1)} step={0.5} onChange={(value) => update("punchHoleEndInset", value)} />
+                      <NumberField label="Hole diameter (mm)" value={settings.punchHoleDiameter} min={0.5} max={10} step={0.5} onChange={(value) => update("punchHoleDiameter", value)} />
                     </div>
-                    <NumberField label="Hole diameter (mm)" value={settings.punchHoleDiameter} min={0.5} max={10} step={0.5} onChange={(value) => update("punchHoleDiameter", value)} />
-                    <div className="grid gap-2 border-t pt-3">
+                    <div className="grid gap-3 border-t pt-3">
                       <div className="flex items-center justify-between">
-                        <Label>Pattern groups</Label>
-                        <span className="text-[9px] text-muted-foreground">{settings.punchHoleGroups.reduce((total, group) => total + group.holes, 0)} holes</span>
+                        <Label>{settings.binding === "yotsume" ? "Horizontal sets" : "Pattern groups"}</Label>
+                        <span className="text-[9px] text-muted-foreground">{punchHoleSets.reduce((total, set) => total + set.groups.reduce((setTotal, group) => setTotal + group.holes, 0), 0)} holes</span>
                       </div>
-                      {settings.punchHoleGroups.map((group, index) => (
-                        <div className="rounded-md border bg-[#fffdf7] p-2" key={index}>
+                      {punchHoleSets.map((set, setIndex) => (
+                        <div className="rounded-md border bg-[#fffdf7] p-2" key={setIndex}>
                           <div className="mb-2 flex items-center justify-between">
-                            <span className="text-[9px] font-bold uppercase tracking-[0.09em] text-muted-foreground">Group {index + 1}</span>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon-sm"
-                              aria-label={`Remove hole group ${index + 1}`}
-                              onClick={() => update("punchHoleGroups", settings.punchHoleGroups.filter((_, groupIndex) => groupIndex !== index))}
-                            >
-                              <Trash2 />
-                            </Button>
+                            <span className="text-[9px] font-bold uppercase tracking-[0.09em] text-muted-foreground">{settings.binding === "yotsume" ? `Set ${setIndex + 1}` : "Center fold"}</span>
+                            {settings.binding === "yotsume" && settings.punchHoleSets.length > 1 && (
+                              <Button type="button" variant="outline" size="icon-sm" aria-label={`Remove hole set ${setIndex + 1}`} onClick={() => update("punchHoleSets", settings.punchHoleSets.filter((_, index) => index !== setIndex))}>
+                                <Trash2 />
+                              </Button>
+                            )}
                           </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <NumberField label="Holes" value={group.holes} min={0} max={20} onChange={(value) => updateHoleGroup(index, "holes", value)} />
-                            <NumberField label="Weight" value={group.weight} min={1} max={1000} onChange={(value) => updateHoleGroup(index, "weight", value)} />
+                          {settings.binding === "yotsume" && (
+                            <NumberField label="Edge offset (mm)" value={set.offset} min={2} max={Math.max(2, pageSize.width / 2)} step={0.5} onChange={(value) => updateHoleSet(setIndex, { offset: value })} />
+                          )}
+                          <div className="mt-2 grid gap-2 border-t pt-2">
+                            {set.groups.map((group, groupIndex) => (
+                              <div className="grid grid-cols-[1fr_1fr_auto] items-end gap-2" key={groupIndex}>
+                                <NumberField label="Holes" value={group.holes} min={0} max={20} onChange={(value) => updateHoleGroup(setIndex, groupIndex, "holes", value)} />
+                                <NumberField label="Weight" value={group.weight} min={1} max={1000} onChange={(value) => updateHoleGroup(setIndex, groupIndex, "weight", value)} />
+                                <Button type="button" variant="outline" size="icon-sm" aria-label={`Remove group ${groupIndex + 1} from set ${setIndex + 1}`} onClick={() => updateHoleSet(setIndex, { groups: set.groups.filter((_, index) => index !== groupIndex) })}>
+                                  <Trash2 />
+                                </Button>
+                              </div>
+                            ))}
+                            <Button type="button" variant="outline" onClick={() => updateHoleSet(setIndex, { groups: [...set.groups, { holes: 1, weight: 1 }] })}>
+                              <Plus /> Add group
+                            </Button>
                           </div>
                         </div>
                       ))}
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => update("punchHoleGroups", [...settings.punchHoleGroups, { holes: 1, weight: 1 }])}
-                      >
-                        <Plus /> Add group
-                      </Button>
+                      {settings.binding === "yotsume" && (
+                        <Button type="button" variant="outline" onClick={() => update("punchHoleSets", [...settings.punchHoleSets, { offset: 18, groups: [{ holes: 1, weight: 1 }] }])}>
+                          <Plus /> Add horizontal set
+                        </Button>
+                      )}
                     </div>
                   </fieldset>
                   <p className="mt-3 text-[9px] leading-4 text-muted-foreground">
                     Weights divide the area between the end insets. Add a zero-hole group as a spacer—for example, 3 / 0 / 3 holes.
-                    {settings.binding !== "yotsume" && " Indicators sit on the center fold."}
+                    {settings.binding === "yotsume" ? " Each horizontal set has its own edge offset and groups." : " Folded bindings use one set on the center fold."}
                   </p>
                 </section>
               </TabsContent>
@@ -815,6 +832,7 @@ function App() {
               >
                 <PageSvg
                   settings={settings}
+                  punchHoleSets={punchHoleSets}
                   logicalPage={currentPage}
                   paperColor={settings.previewPaperColor}
                   className="block h-full w-full shadow-[0_18px_34px_rgba(55,49,35,.14)]"
@@ -847,6 +865,7 @@ function App() {
                 )) : visiblePages.map((page) => (
                   <PageThumbnail
                     settings={settings}
+                    punchHoleSets={punchHoleSets}
                     pageSize={pageSize}
                     logicalPage={page}
                     selected={currentPage === page}
@@ -859,16 +878,16 @@ function App() {
           </main>
 
           <aside className="border-t bg-[#fbfaf6] lg:col-span-2 xl:col-span-1 xl:h-full xl:overflow-y-auto xl:border-t-0 xl:border-l">
-            <div className="px-[18px] pt-[18px] pb-3">
+            <div className="px-[18px] pt-[18px] pb-2">
               <h2 className="font-serif text-[22px]">Properties</h2>
             </div>
 
             <Tabs defaultValue="style" className="gap-0">
-              <TabsList className="h-[42px] w-full justify-start gap-5 rounded-none border-b px-[18px] py-0">
-                <TabsTrigger value="style" className="h-full flex-none rounded-none px-0 text-[10px] font-bold tracking-[0.1em] data-[state=active]:text-[#c9823b] after:bg-[#c9823b]">STYLE</TabsTrigger>
-                <TabsTrigger value="layout" className="h-full flex-none rounded-none px-0 text-[10px] font-bold tracking-[0.1em] data-[state=active]:text-[#c9823b] after:bg-[#c9823b]">LAYOUT</TabsTrigger>
-                <TabsTrigger value="page" className="h-full flex-none rounded-none px-0 text-[10px] font-bold tracking-[0.1em] data-[state=active]:text-[#c9823b] after:bg-[#c9823b]">PAGE</TabsTrigger>
-              </TabsList>
+              <TabBar className="px-[18px]">
+                <TabBarTrigger value="style">STYLE</TabBarTrigger>
+                <TabBarTrigger value="layout">LAYOUT</TabBarTrigger>
+                <TabBarTrigger value="page">PAGE</TabBarTrigger>
+              </TabBar>
 
               <div className="flex items-center gap-3 border-b bg-[#f5f2ea] px-[18px] py-3.5">
                 <span className="grid size-[34px] place-items-center rounded-md border bg-[#fbfaf6]"><Hash className="size-4 text-[#c9823b]" /></span>
