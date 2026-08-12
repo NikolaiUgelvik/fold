@@ -425,7 +425,7 @@ function PageThumbnail({
 function PrintPage({ settings, punchHoleSets, logicalPage }: { settings: Settings; punchHoleSets: HoleSet[]; logicalPage: number }) {
   return (
     <div className="paper-page">
-      <PageSvg settings={settings} punchHoleSets={punchHoleSets} logicalPage={logicalPage} paperColor="#fffef9" className="block h-full w-full" />
+      <PageSvg settings={settings} punchHoleSets={punchHoleSets} logicalPage={logicalPage} paperColor="none" className="block h-full w-full" />
     </div>
   )
 }

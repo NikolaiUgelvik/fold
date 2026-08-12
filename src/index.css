@@ -96,7 +96,6 @@
     width: 50%;
     height: 100%;
     overflow: hidden;
-    background: #fffef9;
   }
   .print-side[data-layout="full"] .paper-page { width: 100%; }
   .print-side[data-layout="stacked"] { flex-direction: column; }
