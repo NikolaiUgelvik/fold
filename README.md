@@ -29,3 +29,14 @@ a separate punch guide, export it afterward with **Punch guide only**.
 
 For Japanese stab binding, stack full sheets in page order before sewing the
 four-hole pattern. If two-up printing is enabled, cut each sheet in half first.
+
+## Trademark notice
+
+Clairefontaine is a trademark of its owner. Fold is an independent project and
+is not affiliated with, endorsed by, sponsored by, or otherwise related to
+Clairefontaine. The Clairefontaine and Trophée names are used only to identify
+color references.
+
+## License
+
+Fold is licensed under the [Apache License 2.0](LICENSE).
