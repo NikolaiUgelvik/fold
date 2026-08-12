@@ -52,6 +52,8 @@ export interface Settings {
   customPages: Record<number, CustomPage>
 }
 
+export type SettingsUpdate = <Key extends keyof Settings>(key: Key, value: Settings[Key]) => void
+
 export const initialSettings: Settings = {
   binding: "coptic",
   yotsumeOrientation: "portrait",
