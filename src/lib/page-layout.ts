@@ -1,4 +1,4 @@
-import type { Binding } from "./imposition.ts"
+import { type Binding, isFoldedBinding } from "./imposition.ts"
 import {
   getFoldedPageSize,
   getHalfSheetPageSize,
@@ -13,7 +13,7 @@ export function getPageLayout(
   orientation: Orientation,
   twoUp: boolean,
 ) {
-  if (binding !== "yotsume") {
+  if (isFoldedBinding(binding)) {
     return {
       paper: getOrientedPaperSize(paperId, "landscape"),
       page: getFoldedPageSize(paperId),

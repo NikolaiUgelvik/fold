@@ -16,7 +16,6 @@ import { type ReactNode, useEffect, useId, useMemo, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -29,11 +28,16 @@ import { type CustomPage, parseIndexEntries } from "@/lib/custom-pages"
 import { ensureFontLoaded } from "@/lib/font-loading"
 import {
   type Binding,
-  createImposition,
   getPrintSides,
   type ImpositionSide,
+  isFoldedBinding,
   type PrintPass,
 } from "@/lib/imposition"
+import {
+  createNotebookDocument,
+  createPrintPageViewModel,
+  createPunchGuideViewModel,
+} from "@/lib/notebook-document"
 import { getPageLayout } from "@/lib/page-layout"
 import {
   getOuterPageNumberEdge,
@@ -43,20 +47,18 @@ import {
 import {
   formatMillimeters,
   getCenteredPatternBounds,
-  getPaperSize,
   type Orientation,
   type PaperId,
   paperSizes,
 } from "@/lib/paper"
 import {
   type BindingEdge,
-  getActivePunchHoleSets,
   getPageBindingEdge,
   getPunchHoles,
   type HoleGroup,
   type HoleSet,
   type PunchHolePlacement,
-  showsPunchHoles,
+  usesSeparatePunchGuide,
 } from "@/lib/punch-holes"
 import { tropheeColors } from "@/lib/trophee-colors"
 
@@ -78,8 +80,6 @@ Cinzel Decorative|"Cinzel Decorative", serif`
     const [label, value] = font.split("|")
     return { label, value }
   })
-
-type NumberFont = string
 
 type IdentifiedHoleGroup = HoleGroup & { id: string }
 type IdentifiedHoleSet = Omit<HoleSet, "groups"> & {
@@ -119,7 +119,7 @@ interface Settings {
   borderColor: string
   numberVisibility: PageNumberVisibility
   numberPosition: "outer" | "center"
-  numberFont: NumberFont
+  numberFont: string
   numberFontSize: number
   numberColor: string
   numberBold: boolean
@@ -128,9 +128,12 @@ interface Settings {
   customPages: Record<number, CustomPage>
 }
 
-type NumberSettingKey = {
-  [Key in keyof Settings]: Settings[Key] extends number ? Key : never
-}[keyof Settings]
+type NumberSettingKey = Exclude<
+  {
+    [Key in keyof Settings]: Settings[Key] extends number ? Key : never
+  }[keyof Settings],
+  "punchHoleDiameter" | "punchHoleEndInset" | "sheets" | "signatures"
+>
 
 const initialSettings: Settings = {
   binding: "coptic",
@@ -175,7 +178,7 @@ const initialSettings: Settings = {
   customPages: {},
 }
 
-function displayedPage(settings: Settings, logicalPage: number) {
+function displayedPage(settings: Pick<Settings, "firstPage">, logicalPage: number) {
   return settings.firstPage + logicalPage - 1
 }
 
@@ -183,19 +186,6 @@ function moveItem<T>(items: T[], from: number, to: number) {
   const moved = [...items]
   moved.splice(to, 0, moved.splice(from, 1)[0])
   return moved
-}
-
-function getPunchGuide(settings: Settings, sides: ImpositionSide[]) {
-  return {
-    settings: {
-      ...settings,
-      pattern: "blank" as const,
-      borderWidth: 0,
-      numberVisibility: "none" as const,
-      customPages: {},
-    },
-    pages: sides[0].pages,
-  }
 }
 
 function NumberField({
@@ -219,7 +209,9 @@ function NumberField({
 
   return (
     <div className="grid gap-1.5">
-      <Label htmlFor={id}>{label}</Label>
+      <label className="text-sm font-medium" htmlFor={id}>
+        {label}
+      </label>
       <Input
         id={id}
         type="number"
@@ -251,7 +243,9 @@ function ColorField({
 
   return (
     <div className="grid gap-1.5">
-      <Label htmlFor={id}>{label}</Label>
+      <label className="text-sm font-medium" htmlFor={id}>
+        {label}
+      </label>
       <Input
         id={id}
         className="h-9 cursor-pointer p-1"
@@ -325,7 +319,7 @@ function getPageMetrics(settings: Settings, logicalPage: number) {
       ? parseIndexEntries(customPage.entries).slice(0, Math.floor((pageSize.height - 50) / 9))
       : []
   const { spacing, majorSpacing, patternRadius, boundsSpacing } = getPatternBasics(settings)
-  const folded = settings.binding !== "yotsume"
+  const folded = isFoldedBinding(settings.binding)
   const bindingEdge = getPageBindingEdge(settings.bindingEdge, logicalPage, folded)
   const pageMargins = getPageMargins(settings, bindingEdge)
   const contentWidth = Math.max(0, pageSize.width - pageMargins.left - pageMargins.right)
@@ -752,14 +746,15 @@ function PrintPage({
   logicalPage: number
   showPunchHoles: boolean
 }) {
+  const page = createPrintPageViewModel(logicalPage, showPunchHoles)
   return (
     <div className="paper-page">
       <PageSvg
         settings={settings}
         punchHoleSets={punchHoleSets}
-        logicalPage={logicalPage}
-        paperColor="none"
-        showPunchHoles={showPunchHoles}
+        logicalPage={page.logicalPage}
+        paperColor={page.paperColor}
+        showPunchHoles={page.showPunchHoles}
         className="block h-full w-full"
       />
     </div>
@@ -767,27 +762,10 @@ function PrintPage({
 }
 
 function PrintDocument({ settings, pass }: { settings: Settings; pass: PrintPass }) {
-  const punchHoleSets = getActivePunchHoleSets(
-    settings.punchHoleSets,
-    settings.binding !== "yotsume",
-  )
-  const { paper, layout } = getPageLayout(
-    settings.paper,
-    settings.binding,
-    settings.yotsumeOrientation,
-    settings.yotsumeTwoUp,
-  )
-  const allSides = createImposition({
-    binding: settings.binding,
-    signatures: settings.signatures,
-    sheetsPerSignature: settings.sheets,
-    twoUp: settings.yotsumeTwoUp,
-  })
-  const sides = getPrintSides(allSides, pass)
-  const punchGuide =
-    pass === "guide" || (pass === "all" && settings.punchHolePlacement === "separate")
-      ? getPunchGuide(settings, allSides)
-      : null
+  const document = createNotebookDocument(settings)
+  const { paper, layout } = document.pageLayout
+  const sides = getPrintSides(document.sides, pass)
+  const punchGuide = pass === "guide" || (pass === "all" && document.guide) ? document.guide : null
 
   return (
     <div className="print-root" aria-hidden="true">
@@ -805,9 +783,9 @@ function PrintDocument({ settings, pass }: { settings: Settings; pass: PrintPass
           {side.pages.map((page) => (
             <PrintPage
               settings={settings}
-              punchHoleSets={punchHoleSets}
+              punchHoleSets={document.punchHoleSets}
               logicalPage={page}
-              showPunchHoles={showsPunchHoles(settings.punchHolePlacement, side, settings.sheets)}
+              showPunchHoles={document.punchHolePages.has(page)}
               key={page}
             />
           ))}
@@ -823,7 +801,7 @@ function PrintDocument({ settings, pass }: { settings: Settings; pass: PrintPass
           {punchGuide.pages.map((page) => (
             <PrintPage
               settings={punchGuide.settings}
-              punchHoleSets={punchHoleSets}
+              punchHoleSets={document.punchHoleSets}
               logicalPage={page}
               showPunchHoles
               key={page}
@@ -847,43 +825,38 @@ function FieldRow({ children }: { children: ReactNode }) {
   return <div className="grid grid-cols-2 gap-2">{children}</div>
 }
 
-function NumberFieldPair({ first, second }: { first: ReactNode; second: ReactNode }) {
-  return (
-    <FieldRow>
-      {first}
-      {second}
-    </FieldRow>
-  )
-}
-
 function SelectControl({
   value,
   onChange,
   options,
+  id,
   ariaLabel,
-  triggerClassName = "w-full bg-card",
+  className = "w-full bg-card",
   disabled = false,
 }: {
   value: string
   onChange: (value: string) => void
   options: Record<string, string>
+  id?: string
   ariaLabel?: string
-  triggerClassName?: string
+  className?: string
   disabled?: boolean
 }) {
   return (
-    <Select value={value} onValueChange={onChange} disabled={disabled}>
-      <SelectTrigger className={triggerClassName} aria-label={ariaLabel}>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {Object.entries(options).map(([optionValue, label]) => (
-          <SelectItem value={optionValue} key={optionValue}>
-            {label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <select
+      id={id}
+      className={`h-9 rounded-md border border-input px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 ${className}`}
+      value={value}
+      aria-label={ariaLabel}
+      disabled={disabled}
+      onChange={(event) => onChange(event.target.value)}
+    >
+      {Object.entries(options).map(([optionValue, label]) => (
+        <option value={optionValue} key={optionValue}>
+          {label}
+        </option>
+      ))}
+    </select>
   )
 }
 
@@ -994,71 +967,60 @@ const documentNames: Record<Settings["pattern"], string> = {
 
 function getDerivedModel(
   settings: Settings,
-  sides: ImpositionSide[],
+  document: ReturnType<typeof createNotebookDocument<Settings>>,
   currentPage: number,
   previewPunchGuide: boolean,
 ) {
-  const totalPages = new Set(sides.flatMap((side) => side.pages)).size
-  const signatureCount = new Set(sides.map((side) => side.signature)).size
-  const paper = getPaperSize(settings.paper)
-  const pageLayout = getPageLayout(
-    settings.paper,
-    settings.binding,
-    settings.yotsumeOrientation,
-    settings.yotsumeTwoUp,
-  )
-  const pageSize = pageLayout.page
-  const showPunchGuide = settings.punchHolePlacement === "separate" && previewPunchGuide
-  const punchGuide = getPunchGuide(settings, sides)
-  const guideSides = settings.punchHolePlacement === "separate" ? 1 : 0
-  const pageNameIndex = settings.binding === "yotsume" && !settings.yotsumeTwoUp ? 0 : 1
-  const pageName = paper.label.split(" → ")[pageNameIndex]
-  const firstSignature = sides.filter((side) => side.signature === 1)
-  const visiblePages = Array.from({ length: Math.min(totalPages, 10) }, (_, index) => index + 1)
-  const documentName = documentNames[settings.pattern]
-  const selectedNumberFont =
-    numberFonts.find((font) => font.value === settings.numberFont) ?? numberFonts[0]
-  const customPage = settings.customPages[currentPage]
+  const guidePreview = createPunchGuideViewModel(document, previewPunchGuide)
   return {
-    totalPages,
-    signatureCount,
-    paper,
-    pageLayout,
-    pageSize,
-    showPunchGuide,
-    punchGuide,
-    guideSides,
-    pageName,
-    firstSignature,
-    visiblePages,
-    documentName,
-    selectedNumberFont,
-    customPage,
+    ...document,
+    showPunchGuide: guidePreview.shown,
+    punchGuide: guidePreview.guide,
+    guideToggleLabel: guidePreview.toggleLabel,
+    guideAriaLabel: guidePreview.ariaLabel,
+    firstSignature: document.sides.filter((side) => side.signature === 1),
+    visiblePages: Array.from(
+      { length: Math.min(document.totalPages, 10) },
+      (_, index) => index + 1,
+    ),
+    documentName: documentNames[settings.pattern],
+    selectedNumberFont:
+      numberFonts.find((font) => font.value === settings.numberFont) ?? numberFonts[0],
+    customPage: settings.customPages[currentPage],
   }
 }
 
-function createPdfExporter(
-  settings: Settings,
-  printPass: PrintPass,
-  selectedNumberFont: (typeof numberFonts)[number],
-  setFontError: (value: string | null) => void,
-  setPrintSettings: (value: { settings: Settings; pass: PrintPass }) => void,
-) {
-  return async () => {
-    try {
-      const font = `${settings.numberItalic ? "italic" : "normal"} ${settings.numberBold ? 700 : 400} 16px ${settings.numberFont}`
-      await ensureFontLoaded(document.fonts, font, "1 2 3")
-      setFontError(null)
-      setPrintSettings({ settings, pass: printPass })
-    } catch {
-      setFontError(`Could not load ${selectedNumberFont.label}. Export was cancelled.`)
-    }
-  }
-}
+type SettingsUpdate<S> = <Key extends keyof S>(key: Key, value: S[Key]) => void
+
+type BookSetupSettings = Pick<
+  Settings,
+  | "binding"
+  | "bindingEdge"
+  | "paper"
+  | "punchHoleDiameter"
+  | "punchHoleEndInset"
+  | "punchHolePlacement"
+  | "punchHoleSets"
+  | "sheets"
+  | "signatures"
+  | "yotsumeOrientation"
+  | "yotsumeTwoUp"
+>
+type HeaderSettings = Pick<Settings, "punchHolePlacement">
+type PagePropertiesSettings = Omit<
+  Settings,
+  | "bindingEdge"
+  | "paper"
+  | "punchHoleDiameter"
+  | "punchHoleEndInset"
+  | "punchHoleSets"
+  | "sheets"
+  | "signatures"
+>
 
 function useAppModel() {
   const [currentPage, setCurrentPage] = useState(1)
-  const { settings, setSettings, update, updateHoleSet, updateHoleGroup, setCustomPage } =
+  const { settings, update, updateHoleSet, updateHoleGroup, setCustomPage } =
     useSettings(currentPage)
   const [zoom, setZoom] = useState(100)
   const [printSettings, setPrintSettings] = useState<{
@@ -1069,75 +1031,93 @@ function useAppModel() {
   const [fontError, setFontError] = useState<string | null>(null)
   const [showPlan, setShowPlan] = useState(false)
   const [previewPunchGuide, setPreviewPunchGuide] = useState(false)
-  const punchHoleSets = useMemo(
-    () => getActivePunchHoleSets(settings.punchHoleSets, settings.binding !== "yotsume"),
-    [settings.binding, settings.punchHoleSets],
-  )
-  const sides = useMemo(
-    () =>
-      createImposition({
-        binding: settings.binding,
-        signatures: settings.signatures,
-        sheetsPerSignature: settings.sheets,
-        twoUp: settings.yotsumeTwoUp,
-      }),
-    [settings.binding, settings.signatures, settings.sheets, settings.yotsumeTwoUp],
-  )
-  const punchHolePages = useMemo(
-    () =>
-      new Set(
-        sides
-          .filter((side) => showsPunchHoles(settings.punchHolePlacement, side, settings.sheets))
-          .flatMap((side) => side.pages),
-      ),
-    [settings.punchHolePlacement, settings.sheets, sides],
-  )
-  const derived = getDerivedModel(settings, sides, currentPage, previewPunchGuide)
+  const document = useMemo(() => createNotebookDocument(settings), [settings])
+  const derived = getDerivedModel(settings, document, currentPage, previewPunchGuide)
   useEffect(
     () => setCurrentPage((page) => Math.min(page, derived.totalPages)),
     [derived.totalPages],
   )
   useFontPreload(setFontError)
   usePrintDialog(printSettings, setPrintSettings)
-  const exportPdf = createPdfExporter(
-    settings,
-    printPass,
-    derived.selectedNumberFont,
-    setFontError,
-    setPrintSettings,
-  )
+  const exportPdf = async () => {
+    try {
+      const font = `${settings.numberItalic ? "italic" : "normal"} ${settings.numberBold ? 700 : 400} 16px ${settings.numberFont}`
+      await ensureFontLoaded(window.document.fonts, font, "1 2 3")
+      setFontError(null)
+      setPrintSettings({ settings, pass: printPass })
+    } catch {
+      setFontError(`Could not load ${derived.selectedNumberFont.label}. Export was cancelled.`)
+    }
+  }
   return {
-    settings,
-    setSettings,
-    currentPage,
-    setCurrentPage,
-    zoom,
-    setZoom,
+    header: {
+      settings: settings as HeaderSettings,
+      printPass,
+      setPrintPass,
+      fontError,
+      documentName: derived.documentName,
+      exportPdf,
+    },
+    bookSetup: {
+      settings: settings as BookSetupSettings,
+      printPass,
+      setPrintPass,
+      setPreviewPunchGuide,
+      punchHoleSets: derived.punchHoleSets,
+      pageSize: derived.pageSize,
+      pageName: derived.pageName,
+      signatureCount: derived.signatureCount,
+      sides: derived.sides,
+      totalPages: derived.totalPages,
+      guideSides: derived.guideSides,
+      update: update as SettingsUpdate<BookSetupSettings>,
+      updateHoleSet,
+      updateHoleGroup,
+    },
+    preview: {
+      settings,
+      currentPage,
+      setCurrentPage,
+      zoom,
+      setZoom,
+      setPreviewPunchGuide,
+      showPlan,
+      setShowPlan,
+      totalPages: derived.totalPages,
+      pageLayout: derived.pageLayout,
+      pageSize: derived.pageSize,
+      showPunchGuide: derived.showPunchGuide,
+      pageName: derived.pageName,
+      guideToggleLabel: derived.guideToggleLabel,
+      guideAriaLabel: derived.guideAriaLabel,
+      punchGuide: derived.punchGuide,
+      punchHoleSets: derived.punchHoleSets,
+      punchHolePages: derived.punchHolePages,
+      firstSignature: derived.firstSignature,
+      visiblePages: derived.visiblePages,
+    },
+    pageProperties: {
+      settings: settings as PagePropertiesSettings,
+      currentPage,
+      pageSize: derived.pageSize,
+      selectedNumberFont: derived.selectedNumberFont,
+      customPage: derived.customPage,
+      printPass,
+      update: update as SettingsUpdate<PagePropertiesSettings>,
+      setCustomPage,
+      exportPdf,
+    },
     printSettings,
-    setPrintSettings,
-    printPass,
-    setPrintPass,
-    fontError,
-    setFontError,
-    showPlan,
-    setShowPlan,
-    previewPunchGuide,
-    setPreviewPunchGuide,
-    punchHoleSets,
-    sides,
-    punchHolePages,
-    ...derived,
-    update,
-    updateHoleSet,
-    updateHoleGroup,
-    setCustomPage,
-    exportPdf,
   }
 }
 
 type AppModel = ReturnType<typeof useAppModel>
+type HeaderModel = AppModel["header"]
+type BookSetupModel = AppModel["bookSetup"]
+type PreviewModel = AppModel["preview"]
+type PagePropertiesModel = AppModel["pageProperties"]
 
-function AppHeader({ model }: { model: AppModel }) {
+function AppHeader({ model }: { model: HeaderModel }) {
   const { settings, printPass, setPrintPass, fontError, documentName, exportPdf } = model
   return (
     <header className="sticky top-0 z-40 flex h-18 items-center justify-between border-b bg-background px-5 sm:px-6">
@@ -1167,9 +1147,11 @@ function AppHeader({ model }: { model: AppModel }) {
             fronts: "Fronts only",
             backs: "Backs only",
             "backs-reversed": "Backs reversed",
-            ...(settings.punchHolePlacement === "separate" && { guide: "Punch guide only" }),
+            ...(usesSeparatePunchGuide(settings.punchHolePlacement) && {
+              guide: "Punch guide only",
+            }),
           }}
-          triggerClassName="w-32 bg-card"
+          className="w-32 bg-card"
           ariaLabel="Print pass"
         />
         <Button
@@ -1184,13 +1166,13 @@ function AppHeader({ model }: { model: AppModel }) {
   )
 }
 
-function PaperTab({ model }: { model: AppModel }) {
+function PaperTab({ model }: { model: BookSetupModel }) {
   const { settings, pageSize, pageName, update } = model
   return (
     <TabsContent value="paper" className="mt-0">
       <section className="border-b p-5">
         <div className="mb-3 flex items-center justify-between">
-          <Label>Paper sheet</Label>
+          <span className="text-sm font-medium">Paper sheet</span>
           <span className="text-caption text-muted-foreground">{paperSizes.length} presets</span>
         </div>
         <div className="grid grid-cols-2 gap-2">
@@ -1218,11 +1200,11 @@ function PaperTab({ model }: { model: AppModel }) {
                   {formatMillimeters(sheetSize.width)} × {formatMillimeters(sheetSize.height)} mm
                 </span>
                 <span className="mt-0.5 block text-2xs text-muted-foreground">
-                  {settings.binding !== "yotsume"
-                    ? `folds to ${paperSize.label.split(" → ")[1]}`
+                  {isFoldedBinding(settings.binding)
+                    ? `folds to ${paperSize.pageName}`
                     : settings.yotsumeTwoUp
-                      ? `cuts to ${paperSize.label.split(" → ")[1]}`
-                      : `full-size ${paperSize.label.split(" → ")[0]}`}
+                      ? `cuts to ${paperSize.pageName}`
+                      : `full-size ${paperSize.sheetName}`}
                 </span>
               </button>
             )
@@ -1242,16 +1224,19 @@ function PaperTab({ model }: { model: AppModel }) {
   )
 }
 
-function BindingTab({ model }: { model: AppModel }) {
+function BindingTab({ model }: { model: BookSetupModel }) {
   const { settings, signatureCount, update } = model
   return (
     <TabsContent value="binding" className="mt-0">
       <section className="border-b p-5">
         <div className="mb-3 flex items-center justify-between">
-          <Label>Binding</Label>
+          <label className="text-sm font-medium" htmlFor="binding">
+            Binding
+          </label>
           <BookOpen className="size-4 text-ring" />
         </div>
         <SelectControl
+          id="binding"
           value={settings.binding}
           onChange={(value) => update("binding", value as Binding)}
           options={{
@@ -1263,16 +1248,22 @@ function BindingTab({ model }: { model: AppModel }) {
         {settings.binding === "yotsume" && (
           <>
             <div className="mt-3 grid gap-1.5">
-              <Label>Binding edge</Label>
+              <label className="text-sm font-medium" htmlFor="binding-edge">
+                Binding edge
+              </label>
               <SelectControl
+                id="binding-edge"
                 value={settings.bindingEdge}
                 onChange={(value) => update("bindingEdge", value as BindingEdge)}
                 options={{ left: "Left", right: "Right" }}
               />
             </div>
             <div className="mt-3 grid gap-1.5">
-              <Label>Page orientation</Label>
+              <label className="text-sm font-medium" htmlFor="page-orientation">
+                Page orientation
+              </label>
               <SelectControl
+                id="page-orientation"
                 value={settings.yotsumeOrientation}
                 onChange={(value) => update("yotsumeOrientation", value as Orientation)}
                 options={{ portrait: "Portrait", landscape: "Landscape" }}
@@ -1290,7 +1281,7 @@ function BindingTab({ model }: { model: AppModel }) {
         <div
           className={`mt-3 grid gap-2 ${settings.binding === "yotsume" ? "grid-cols-1" : "grid-cols-2"}`}
         >
-          {settings.binding !== "yotsume" && (
+          {isFoldedBinding(settings.binding) && (
             <NumberField
               label="Signatures"
               value={signatureCount}
@@ -1322,7 +1313,7 @@ function BindingTab({ model }: { model: AppModel }) {
   )
 }
 
-function HolesTab({ model }: { model: AppModel }) {
+function HolesTab({ model }: { model: BookSetupModel }) {
   const {
     settings,
     printPass,
@@ -1338,14 +1329,17 @@ function HolesTab({ model }: { model: AppModel }) {
     <TabsContent value="holes" className="mt-0">
       <section className="border-b p-5">
         <div className="grid gap-1.5">
-          <Label>Punch indicators</Label>
+          <label className="text-sm font-medium" htmlFor="punch-indicators">
+            Punch indicators
+          </label>
           <SelectControl
+            id="punch-indicators"
             value={settings.punchHolePlacement}
             onChange={(value) => {
               const placement = value as PunchHolePlacement
               update("punchHolePlacement", placement)
-              if (placement !== "separate" && printPass === "guide") setPrintPass("all")
-              setPreviewPunchGuide(placement === "separate")
+              if (!usesSeparatePunchGuide(placement) && printPass === "guide") setPrintPass("all")
+              setPreviewPunchGuide(usesSeparatePunchGuide(placement))
             }}
             options={{
               every: "Every page",
@@ -1363,31 +1357,29 @@ function HolesTab({ model }: { model: AppModel }) {
           className={`mt-3 grid gap-3 ${settings.punchHolePlacement === "none" ? "opacity-45" : ""}`}
           disabled={settings.punchHolePlacement === "none"}
         >
-          <NumberFieldPair
-            first={
-              <NumberField
-                label="End inset (mm)"
-                value={settings.punchHoleEndInset}
-                min={5}
-                max={Math.max(5, pageSize.height / 2 - 1)}
-                step={0.5}
-                onChange={(value) => update("punchHoleEndInset", value)}
-              />
-            }
-            second={
-              <NumberField
-                label="Hole diameter (mm)"
-                value={settings.punchHoleDiameter}
-                min={0.5}
-                max={10}
-                step={0.5}
-                onChange={(value) => update("punchHoleDiameter", value)}
-              />
-            }
-          />
+          <FieldRow>
+            <NumberField
+              label="End inset (mm)"
+              value={settings.punchHoleEndInset}
+              min={5}
+              max={Math.max(5, pageSize.height / 2 - 1)}
+              step={0.5}
+              onChange={(value) => update("punchHoleEndInset", value)}
+            />
+            <NumberField
+              label="Hole diameter (mm)"
+              value={settings.punchHoleDiameter}
+              min={0.5}
+              max={10}
+              step={0.5}
+              onChange={(value) => update("punchHoleDiameter", value)}
+            />
+          </FieldRow>
           <div className="grid gap-3 border-t pt-3">
             <div className="flex items-center justify-between">
-              <Label>{settings.binding === "yotsume" ? "Horizontal sets" : "Pattern groups"}</Label>
+              <span className="text-sm font-medium">
+                {settings.binding === "yotsume" ? "Horizontal sets" : "Pattern groups"}
+              </span>
               <span className="text-2xs text-muted-foreground">
                 {punchHoleSets.reduce(
                   (total, set) =>
@@ -1570,7 +1562,7 @@ function HolesTab({ model }: { model: AppModel }) {
   )
 }
 
-function BookSetup({ model }: { model: AppModel }) {
+function BookSetup({ model }: { model: BookSetupModel }) {
   const { sides, totalPages, guideSides } = model
   return (
     <aside className="border-b bg-background lg:border-r lg:border-b-0 xl:h-full xl:overflow-y-auto">
@@ -1618,7 +1610,7 @@ function BookSetup({ model }: { model: AppModel }) {
   )
 }
 
-function PreviewToolbar({ model }: { model: AppModel }) {
+function PreviewToolbar({ model }: { model: PreviewModel }) {
   const {
     settings,
     currentPage,
@@ -1631,6 +1623,7 @@ function PreviewToolbar({ model }: { model: AppModel }) {
     pageSize,
     showPunchGuide,
     pageName,
+    guideToggleLabel,
   } = model
   return (
     <div className="flex h-15 shrink-0 items-center justify-between border-b bg-secondary px-5 text-secondary-foreground">
@@ -1666,13 +1659,13 @@ function PreviewToolbar({ model }: { model: AppModel }) {
             <Plus />
           </Button>
         </div>
-        {settings.punchHolePlacement === "separate" && (
+        {usesSeparatePunchGuide(settings.punchHolePlacement) && (
           <Button
             variant="outline"
             className="h-8 px-3 text-xs"
             onClick={() => setPreviewPunchGuide((shown) => !shown)}
           >
-            {showPunchGuide ? "View pages" : "View guide"}
+            {guideToggleLabel}
           </Button>
         )}
         {!showPunchGuide && (
@@ -1705,7 +1698,7 @@ function PreviewToolbar({ model }: { model: AppModel }) {
   )
 }
 
-const PreviewPage = ({ model }: { model: AppModel }) => {
+const PreviewPage = ({ model }: { model: PreviewModel }) => {
   const {
     settings,
     currentPage,
@@ -1716,6 +1709,7 @@ const PreviewPage = ({ model }: { model: AppModel }) => {
     pageSize,
     showPunchGuide,
     punchGuide,
+    guideAriaLabel,
   } = model
   return (
     <div className="flex min-h-135 flex-1 overflow-auto p-4 lg:p-6">
@@ -1728,10 +1722,10 @@ const PreviewPage = ({ model }: { model: AppModel }) => {
           height: `min(${zoom * 0.7}vh, ${zoom * 7.4}px)`,
         }}
       >
-        {showPunchGuide ? (
+        {showPunchGuide && punchGuide ? (
           <div
             role="img"
-            aria-label="Punch guide preview"
+            aria-label={guideAriaLabel}
             className={`grid h-full w-full overflow-hidden bg-paper shadow-paper ${pageLayout.layout === "stacked" ? "grid-rows-2 divide-y" : pageLayout.layout === "side-by-side" ? "grid-cols-2 divide-x" : "grid-cols-1"}`}
           >
             {punchGuide.pages.map((page) => (
@@ -1763,7 +1757,7 @@ const PreviewPage = ({ model }: { model: AppModel }) => {
   )
 }
 
-function PreviewStrip({ model }: { model: AppModel }) {
+function PreviewStrip({ model }: { model: PreviewModel }) {
   const {
     settings,
     currentPage,
@@ -1835,7 +1829,7 @@ function PreviewStrip({ model }: { model: AppModel }) {
   )
 }
 
-function Preview({ model }: { model: AppModel }) {
+function Preview({ model }: { model: PreviewModel }) {
   return (
     <main className="flex min-h-175 min-w-0 flex-col bg-canvas xl:h-full xl:min-h-0">
       <PreviewToolbar model={model} />
@@ -1847,7 +1841,7 @@ function Preview({ model }: { model: AppModel }) {
   )
 }
 
-function StyleTab({ model }: { model: AppModel }) {
+function StyleTab({ model }: { model: PagePropertiesModel }) {
   const { settings, update } = model
   function settingNumberField(
     setting: NumberSettingKey,
@@ -1910,6 +1904,7 @@ function StyleTab({ model }: { model: AppModel }) {
         <SectionTitle>Page pattern</SectionTitle>
         <SelectControl
           value={settings.pattern}
+          ariaLabel="Page pattern"
           onChange={(value) => update("pattern", value as Settings["pattern"])}
           options={{
             dots: "Dot grid",
@@ -1921,14 +1916,14 @@ function StyleTab({ model }: { model: AppModel }) {
         />
         {settings.pattern === "dots" && (
           <>
-            <NumberFieldPair
-              first={settingNumberField("dotSize", "Dot size (mm)", 0.05, 2, 0.05)}
-              second={settingNumberField("dotSpacing", "Spacing (mm)", 2, 20, 0.5)}
-            />
-            <NumberFieldPair
-              first={settingNumberField("dotMajorEvery", "Major interval", 0, 20)}
-              second={settingNumberField("dotMajorSize", "Major size (mm)", 0.05, 4, 0.05)}
-            />
+            <FieldRow>
+              {settingNumberField("dotSize", "Dot size (mm)", 0.05, 2, 0.05)}
+              {settingNumberField("dotSpacing", "Spacing (mm)", 2, 20, 0.5)}
+            </FieldRow>
+            <FieldRow>
+              {settingNumberField("dotMajorEvery", "Major interval", 0, 20)}
+              {settingNumberField("dotMajorSize", "Major size (mm)", 0.05, 4, 0.05)}
+            </FieldRow>
             <p className="text-2xs leading-4 text-muted-foreground">
               Set the interval to 0 to disable major dots.
             </p>
@@ -1943,22 +1938,22 @@ function StyleTab({ model }: { model: AppModel }) {
           settings.pattern === "grid" ||
           settings.pattern === "graph") && (
           <>
-            <NumberFieldPair
-              first={settingNumberField(
+            <FieldRow>
+              {settingNumberField(
                 "lineWidth",
                 settings.pattern === "graph" ? "Thin width (mm)" : "Line width (mm)",
                 0.05,
                 1,
                 0.05,
               )}
-              second={settingNumberField(
+              {settingNumberField(
                 "lineSpacing",
                 settings.pattern === "graph" ? "Cell size (mm)" : "Spacing (mm)",
                 3,
                 20,
                 0.5,
               )}
-            />
+            </FieldRow>
             <ColorField
               label={settings.pattern === "graph" ? "Thin line color" : "Line color"}
               value={settings.lineColor}
@@ -1968,10 +1963,10 @@ function StyleTab({ model }: { model: AppModel }) {
         )}
         {settings.pattern === "graph" && (
           <>
-            <NumberFieldPair
-              first={settingNumberField("graphMajorEvery", "Cells per block", 2, 20)}
-              second={settingNumberField("graphMajorLineWidth", "Thick width (mm)", 0.05, 2, 0.05)}
-            />
+            <FieldRow>
+              {settingNumberField("graphMajorEvery", "Cells per block", 2, 20)}
+              {settingNumberField("graphMajorLineWidth", "Thick width (mm)", 0.05, 2, 0.05)}
+            </FieldRow>
             <ColorField
               label="Thick line color"
               value={settings.graphMajorColor}
@@ -1990,33 +1985,29 @@ function StyleTab({ model }: { model: AppModel }) {
   )
 }
 
-function LayoutTab({ model }: { model: AppModel }) {
+function LayoutTab({ model }: { model: PagePropertiesModel }) {
   const { settings, pageSize, selectedNumberFont, update } = model
   return (
     <TabsContent value="layout" className="mt-0">
       <section className="grid gap-3 border-b p-4.5">
         <SectionTitle>Margins & border</SectionTitle>
-        <NumberFieldPair
-          first={
-            <NumberField
-              label="Margin (mm)"
-              value={settings.margin}
-              min={0}
-              max={30}
-              onChange={(value) => update("margin", value)}
-            />
-          }
-          second={
-            <NumberField
-              label="Gutter (mm)"
-              value={settings.gutterMargin}
-              min={0}
-              max={Math.max(0, pageSize.width - settings.margin * 2 - 10)}
-              step={0.5}
-              onChange={(value) => update("gutterMargin", value)}
-            />
-          }
-        />
+        <FieldRow>
+          <NumberField
+            label="Margin (mm)"
+            value={settings.margin}
+            min={0}
+            max={30}
+            onChange={(value) => update("margin", value)}
+          />
+          <NumberField
+            label="Gutter (mm)"
+            value={settings.gutterMargin}
+            min={0}
+            max={Math.max(0, pageSize.width - settings.margin * 2 - 10)}
+            step={0.5}
+            onChange={(value) => update("gutterMargin", value)}
+          />
+        </FieldRow>
         <p className="text-2xs leading-4 text-muted-foreground">
           The gutter is added to the binding-side margin.
         </p>
@@ -2041,8 +2032,11 @@ function LayoutTab({ model }: { model: AppModel }) {
         <SectionTitle>Numbering</SectionTitle>
         <div className="grid grid-cols-2 gap-2">
           <div className="grid gap-1.5">
-            <Label>Pages</Label>
+            <label className="text-sm font-medium" htmlFor="numbered-pages">
+              Pages
+            </label>
             <SelectControl
+              id="numbered-pages"
               value={settings.numberVisibility}
               onChange={(value) => update("numberVisibility", value as PageNumberVisibility)}
               options={{
@@ -2051,29 +2045,36 @@ function LayoutTab({ model }: { model: AppModel }) {
                 left: "Left only",
                 none: "Hidden",
               }}
-              ariaLabel="Numbered pages"
             />
           </div>
           <div className="grid gap-1.5">
-            <Label>Position</Label>
+            <label className="text-sm font-medium" htmlFor="page-number-position">
+              Position
+            </label>
             <SelectControl
+              id="page-number-position"
               disabled={settings.numberVisibility === "none"}
               value={settings.numberPosition}
               onChange={(value) => update("numberPosition", value as Settings["numberPosition"])}
               options={{ outer: "Outer corners", center: "Centered" }}
-              ariaLabel="Page number position"
             />
           </div>
         </div>
         <fieldset disabled={settings.numberVisibility === "none"} className="grid gap-3">
           <div className="grid gap-3">
             <div className="grid gap-1.5">
-              <Label>Font</Label>
+              <label className="text-sm font-medium" htmlFor="number-font">
+                Font
+              </label>
               <Select
                 value={settings.numberFont}
-                onValueChange={(value) => update("numberFont", value as NumberFont)}
+                onValueChange={(value) => update("numberFont", value)}
               >
-                <SelectTrigger className="w-full bg-card" aria-label="Page number font">
+                <SelectTrigger
+                  id="number-font"
+                  className="w-full bg-card"
+                  aria-label="Page number font"
+                >
                   <SelectValue>
                     <span className="text-base" style={{ fontFamily: selectedNumberFont.value }}>
                       {selectedNumberFont.label} (1 2 3)
@@ -2109,8 +2110,8 @@ function LayoutTab({ model }: { model: AppModel }) {
             value={settings.numberColor}
             onChange={(value) => update("numberColor", value)}
           />
-          <div className="grid gap-1.5">
-            <Label>Style</Label>
+          <fieldset className="grid gap-1.5">
+            <legend className="text-sm font-medium">Style</legend>
             <div className="grid grid-cols-2 gap-2">
               <Button
                 type="button"
@@ -2131,7 +2132,7 @@ function LayoutTab({ model }: { model: AppModel }) {
                 <em>I</em> Italic
               </Button>
             </div>
-          </div>
+          </fieldset>
           <NumberField
             label="Start at"
             value={settings.firstPage}
@@ -2145,68 +2146,67 @@ function LayoutTab({ model }: { model: AppModel }) {
   )
 }
 
-function PageTab({ model }: { model: AppModel }) {
+function PageTab({ model }: { model: PagePropertiesModel }) {
   const { settings, currentPage, customPage, setCustomPage } = model
   return (
     <TabsContent value="page" className="mt-0">
       <section className="grid gap-3 border-b p-4.5">
         <SectionTitle>{`Page ${displayedPage(settings, currentPage)}`}</SectionTitle>
         <div className="grid gap-1.5">
-          <Label>Template</Label>
-          <Select
+          <label className="text-sm font-medium" htmlFor="page-template">
+            Template
+          </label>
+          <SelectControl
+            id="page-template"
             value={customPage?.type ?? "default"}
-            onValueChange={(value) => {
+            onChange={(value) => {
               if (value === "title") setCustomPage({ type: "title", title: "", subtitle: "" })
               else if (value === "index")
                 setCustomPage({ type: "index", title: "Index", entries: "" })
               else setCustomPage(null)
             }}
-          >
-            <SelectTrigger className="w-full bg-card">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="default">Default page</SelectItem>
-              <SelectItem value="title">Title page</SelectItem>
-              <SelectItem value="index">Index page</SelectItem>
-            </SelectContent>
-          </Select>
+            options={{ default: "Default page", title: "Title page", index: "Index page" }}
+          />
         </div>
-        {customPage?.type === "title" && (
-          <>
-            <div className="grid gap-1.5">
-              <Label>Title</Label>
+        {customPage?.type === "title" &&
+          (
+            [
+              ["title", "Title", 40, "My Notebook"],
+              ["subtitle", "Subtitle", 60, "Name or date"],
+            ] as const
+          ).map(([field, label, maxLength, placeholder]) => (
+            <div className="grid gap-1.5" key={field}>
+              <label className="text-sm font-medium" htmlFor={`page-${field}`}>
+                {label}
+              </label>
               <Input
-                value={customPage.title}
-                maxLength={40}
-                placeholder="My Notebook"
-                onChange={(event) => setCustomPage({ ...customPage, title: event.target.value })}
+                id={`page-${field}`}
+                value={customPage[field]}
+                maxLength={maxLength}
+                placeholder={placeholder}
+                onChange={(event) => setCustomPage({ ...customPage, [field]: event.target.value })}
               />
             </div>
-            <div className="grid gap-1.5">
-              <Label>Subtitle</Label>
-              <Input
-                value={customPage.subtitle}
-                maxLength={60}
-                placeholder="Name or date"
-                onChange={(event) => setCustomPage({ ...customPage, subtitle: event.target.value })}
-              />
-            </div>
-          </>
-        )}
+          ))}
         {customPage?.type === "index" && (
           <>
             <div className="grid gap-1.5">
-              <Label>Heading</Label>
+              <label className="text-sm font-medium" htmlFor="index-heading">
+                Heading
+              </label>
               <Input
+                id="index-heading"
                 value={customPage.title}
                 maxLength={40}
                 onChange={(event) => setCustomPage({ ...customPage, title: event.target.value })}
               />
             </div>
             <div className="grid gap-1.5">
-              <Label>Entries</Label>
+              <label className="text-sm font-medium" htmlFor="index-entries">
+                Entries
+              </label>
               <textarea
+                id="index-entries"
                 className="border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 min-h-32 w-full resize-y rounded-md border bg-card px-3 py-2 text-sm shadow-xs outline-none focus-visible:ring-3"
                 value={customPage.entries}
                 placeholder={"Projects | 4\nNotes | 12"}
@@ -2227,7 +2227,10 @@ function PageTab({ model }: { model: AppModel }) {
   )
 }
 
-function getPrintInstructions(settings: Settings, printPass: PrintPass) {
+function getPrintInstructions(
+  settings: Pick<Settings, "binding" | "yotsumeOrientation" | "yotsumeTwoUp">,
+  printPass: PrintPass,
+) {
   if (printPass === "all") {
     const edge =
       settings.binding === "yotsume" &&
@@ -2248,11 +2251,7 @@ function getPrintInstructions(settings: Settings, printPass: PrintPass) {
   return "Use reversed backs when the last front sheet is on top of the printed stack. Use same-order backs when the first is on top."
 }
 
-function needsSeparateGuideNote(printPass: PrintPass) {
-  return printPass === "fronts" || printPass === "backs" || printPass === "backs-reversed"
-}
-
-function PrintInstructions({ model }: { model: AppModel }) {
+function PrintInstructions({ model }: { model: PagePropertiesModel }) {
   const { settings, printPass, exportPdf } = model
   return (
     <div className="p-4.5">
@@ -2261,15 +2260,15 @@ function PrintInstructions({ model }: { model: AppModel }) {
       </Button>
       <p className="mt-3 text-caption leading-4 text-muted-foreground">
         {getPrintInstructions(settings, printPass)}
-        {needsSeparateGuideNote(printPass) &&
-          settings.punchHolePlacement === "separate" &&
+        {(printPass === "fronts" || printPass === "backs" || printPass === "backs-reversed") &&
+          usesSeparatePunchGuide(settings.punchHolePlacement) &&
           " Export the punch guide separately when needed."}
       </p>
     </div>
   )
 }
 
-function Properties({ model }: { model: AppModel }) {
+function Properties({ model }: { model: PagePropertiesModel }) {
   return (
     <aside className="border-t bg-background lg:col-span-2 xl:col-span-1 xl:h-full xl:overflow-y-auto xl:border-t-0 xl:border-l">
       <div className="px-4.5 pt-4.5 pb-2">
@@ -2310,11 +2309,11 @@ function App() {
   return (
     <>
       <div className="screen-app min-h-svh bg-canvas">
-        <AppHeader model={model} />
+        <AppHeader model={model.header} />
         <div className="app-grid grid">
-          <BookSetup model={model} />
-          <Preview model={model} />
-          <Properties model={model} />
+          <BookSetup model={model.bookSetup} />
+          <Preview model={model.preview} />
+          <Properties model={model.pageProperties} />
         </div>
       </div>
       {model.printSettings && (

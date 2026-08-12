@@ -1,8 +1,6 @@
 @import "./fonts.css";
 @import "tailwindcss";
 
-@custom-variant dark (&:is(.dark *));
-
 :root {
   --radius: 0.5rem;
   --background: #fbfaf6;
@@ -80,7 +78,8 @@
     @apply m-0 bg-background font-sans text-foreground antialiased;
   }
   button,
-  input {
+  input,
+  select {
     font: inherit;
   }
 }

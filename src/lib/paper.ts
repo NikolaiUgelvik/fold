@@ -1,11 +1,29 @@
 export const paperSizes = [
-  { id: "a2", label: "A2 → A3", width: 594, height: 420 },
-  { id: "a3", label: "A3 → A4", width: 420, height: 297 },
-  { id: "a4", label: "A4 → A5", width: 297, height: 210 },
-  { id: "a5", label: "A5 → A6", width: 210, height: 148 },
-  { id: "tabloid", label: "US Tabloid → Letter", width: 431.8, height: 279.4 },
-  { id: "legal", label: "US Legal → Half Legal", width: 355.6, height: 215.9 },
-  { id: "letter", label: "US Letter → Half Letter", width: 279.4, height: 215.9 },
+  { id: "a2", sheetName: "A2", pageName: "A3", width: 594, height: 420 },
+  { id: "a3", sheetName: "A3", pageName: "A4", width: 420, height: 297 },
+  { id: "a4", sheetName: "A4", pageName: "A5", width: 297, height: 210 },
+  { id: "a5", sheetName: "A5", pageName: "A6", width: 210, height: 148 },
+  {
+    id: "tabloid",
+    sheetName: "US Tabloid",
+    pageName: "Letter",
+    width: 431.8,
+    height: 279.4,
+  },
+  {
+    id: "legal",
+    sheetName: "US Legal",
+    pageName: "Half Legal",
+    width: 355.6,
+    height: 215.9,
+  },
+  {
+    id: "letter",
+    sheetName: "US Letter",
+    pageName: "Half Letter",
+    width: 279.4,
+    height: 215.9,
+  },
 ] as const
 
 export type PaperId = (typeof paperSizes)[number]["id"]

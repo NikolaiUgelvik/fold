@@ -1,4 +1,9 @@
 export type Binding = "coptic" | "saddle" | "yotsume"
+export type FoldedBinding = Exclude<Binding, "yotsume">
+
+export function isFoldedBinding(binding: Binding): binding is FoldedBinding {
+  return binding !== "yotsume"
+}
 
 export interface ImpositionSide {
   signature: number
@@ -9,11 +14,23 @@ export interface ImpositionSide {
 
 export type PrintPass = "all" | "fronts" | "backs" | "backs-reversed" | "guide"
 
+const printPasses = {
+  all: { side: null, reversed: false },
+  fronts: { side: "front", reversed: false },
+  backs: { side: "back", reversed: false },
+  "backs-reversed": { side: "back", reversed: true },
+  guide: { side: undefined, reversed: false },
+} as const satisfies Record<
+  PrintPass,
+  { side: ImpositionSide["side"] | null | undefined; reversed: boolean }
+>
+
 export function getPrintSides(sides: ImpositionSide[], pass: PrintPass) {
-  if (pass === "all") return sides
-  if (pass === "guide") return []
-  const selected = sides.filter((side) => side.side === (pass === "fronts" ? "front" : "back"))
-  return pass === "backs-reversed" ? selected.reverse() : selected
+  const metadata = printPasses[pass]
+  if (metadata.side === null) return sides
+  if (metadata.side === undefined) return []
+  const selected = sides.filter((side) => side.side === metadata.side)
+  return metadata.reversed ? selected.reverse() : selected
 }
 
 function positiveInteger(value: number, name: string) {
@@ -30,7 +47,7 @@ function getSidePages(
   foldedPages: number[],
   reverse = false,
 ) {
-  if (binding !== "yotsume") return foldedPages
+  if (isFoldedBinding(binding)) return foldedPages
   const pages = twoUp ? [firstLeaf, firstLeaf + 2] : [firstLeaf]
   return reverse ? pages.reverse() : pages
 }

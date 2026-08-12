@@ -7,9 +7,19 @@ import {
   getPunchHoles,
   type HoleSet,
   showsPunchHoles,
+  usesSeparatePunchGuide,
 } from "./punch-holes.ts"
 
 const fourHoles: HoleSet[] = [{ offset: 12, groups: [{ holes: 4, weight: 1 }] }]
+
+test("identifies separate punch guides", () => {
+  assert.deepEqual(
+    ["none", "every", "signature-front", "signature-back", "separate"].map((placement) =>
+      usesSeparatePunchGuide(placement as Parameters<typeof usesSeparatePunchGuide>[0]),
+    ),
+    [false, false, false, false, true],
+  )
+})
 
 test("places punch holes on the selected signature side", () => {
   const first: ImpositionSide = { signature: 1, sheet: 1, side: "front", pages: [8, 1] }

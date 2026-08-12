@@ -7,6 +7,10 @@ export type PunchHolePlacement =
   | "signature-front"
   | "signature-back"
   | "separate"
+export function usesSeparatePunchGuide(placement: PunchHolePlacement) {
+  return placement === "separate"
+}
+
 export interface HoleGroup {
   holes: number
   weight: number

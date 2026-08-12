@@ -36,10 +36,13 @@ test("orients full and half sheets", () => {
 test("provides US tabloid sheets for letter-size pages", () => {
   assert.deepEqual(getPaperSize("tabloid"), {
     id: "tabloid",
-    label: "US Tabloid → Letter",
+    sheetName: "US Tabloid",
+    pageName: "Letter",
     width: 431.8,
     height: 279.4,
   })
+  assert.equal(getPaperSize("legal").sheetName, "US Legal")
+  assert.equal(getPaperSize("legal").pageName, "Half Legal")
 })
 
 test("centers complete pattern intervals within asymmetric margins", () => {

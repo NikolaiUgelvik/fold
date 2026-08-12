@@ -1,20 +1,45 @@
 import assert from "node:assert/strict"
-import { readFileSync } from "node:fs"
 import test from "node:test"
+import {
+  createNotebookDocument,
+  createPunchGuideViewModel,
+  type NotebookDocumentSettings,
+} from "./notebook-document.ts"
 
-test("shows the separate punch guide in the live preview", () => {
-  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8")
-  const bookSetup = app.slice(
-    app.indexOf("function BookSetup"),
-    app.indexOf("function PreviewToolbar"),
-  )
-  const preview = app.slice(
-    app.indexOf("function PreviewToolbar"),
-    app.indexOf("function StyleTab"),
-  )
+const settings: NotebookDocumentSettings = {
+  binding: "coptic",
+  paper: "a4",
+  yotsumeOrientation: "portrait",
+  yotsumeTwoUp: false,
+  signatures: 1,
+  sheets: 2,
+  punchHolePlacement: "separate",
+  punchHoleSets: [{ offset: 12, groups: [{ holes: 4, weight: 1 }] }],
+  pattern: "dots",
+  borderWidth: 1,
+  numberVisibility: "both",
+  customPages: { 1: { type: "title" } },
+}
 
-  assert.match(app, /function getPunchGuide/)
-  assert.match(preview, /aria-label="Punch guide preview"/)
-  assert.match(preview, /showPunchGuide \? "View pages" : "View guide"/)
-  assert.match(bookSetup, /sides\.length \+ guideSides/)
+test("models the separate punch guide preview", () => {
+  const document = createNotebookDocument(settings)
+  const hidden = createPunchGuideViewModel(document, false)
+  const shown = createPunchGuideViewModel(document, true)
+
+  assert.equal(hidden.sideCount, 1)
+  assert.equal(hidden.toggleLabel, "View guide")
+  assert.equal(shown.toggleLabel, "View pages")
+  assert.equal(shown.ariaLabel, "Punch guide preview")
+  assert.deepEqual(shown.guide?.pages, [8, 1])
+  assert.equal(shown.guide?.settings.pattern, "blank")
+  assert.equal(shown.guide?.settings.borderWidth, 0)
+  assert.equal(shown.guide?.settings.numberVisibility, "none")
+  assert.deepEqual(shown.guide?.settings.customPages, {})
+})
+
+test("omits a guide for embedded punch indicators", () => {
+  const document = createNotebookDocument({ ...settings, punchHolePlacement: "every" })
+
+  assert.equal(document.guide, null)
+  assert.equal(createPunchGuideViewModel(document, true).sideCount, 0)
 })
