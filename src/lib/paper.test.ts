@@ -1,8 +1,20 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { getCenteredPatternBounds, getFoldedPageSize, getHalfSheetPageSize, getOrientedPaperSize, getPaperSize } from "./paper.ts"
+import {
+  getCenteredPatternBounds,
+  getFoldedPageSize,
+  getHalfSheetPageSize,
+  getOrientedPaperSize,
+  getPaperSize,
+} from "./paper.ts"
 
-function assertCentered(bounds: { x: number; y: number; width: number; height: number }, radius: number, spacing: number, horizontalIntervals: number, verticalIntervals: number) {
+function assertCentered(
+  bounds: { x: number; y: number; width: number; height: number },
+  radius: number,
+  spacing: number,
+  horizontalIntervals: number,
+  verticalIntervals: number,
+) {
   assert.ok(Math.abs(bounds.x - (148.5 - bounds.x - bounds.width)) < 1e-10)
   assert.ok(Math.abs(bounds.y - (210 - bounds.y - bounds.height)) < 1e-10)
   assert.equal((bounds.width - radius * 2) / spacing, horizontalIntervals)

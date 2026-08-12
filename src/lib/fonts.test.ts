@@ -8,7 +8,7 @@ test("self-hosts page-number fonts", () => {
   const html = readFileSync(new URL("../../index.html", import.meta.url), "utf8")
   const files = [...css.matchAll(/url\((\/fonts\/[^)]+)\)/g)].map(([, file]) => file)
 
-  assert.match(css, /font-family: 'Pinyon Script'/)
+  assert.match(css, /font-family: ["']Pinyon Script["']/)
   assert.doesNotMatch(html + css, /fonts\.(?:googleapis|gstatic)\.com/)
   assert.ok(files.length > 0)
   const fonts = files.map((file) => readFileSync(new URL(`../../public${file}`, import.meta.url)))

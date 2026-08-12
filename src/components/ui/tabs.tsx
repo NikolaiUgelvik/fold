@@ -1,5 +1,5 @@
-import * as React from "react"
 import { Tabs as TabsPrimitive } from "radix-ui"
+import type * as React from "react"
 
 import { cn } from "@/lib/utils"
 
@@ -19,7 +19,10 @@ function TabsList({ className, ...props }: React.ComponentProps<typeof TabsPrimi
     <TabsPrimitive.List
       data-slot="tabs-list"
       data-variant="line"
-      className={cn("group/tabs-list inline-flex h-9 w-fit items-center justify-center gap-1 bg-transparent p-0.75 text-muted-foreground", className)}
+      className={cn(
+        "group/tabs-list inline-flex h-9 w-fit items-center justify-center gap-1 bg-transparent p-0.75 text-muted-foreground",
+        className,
+      )}
       {...props}
     />
   )
@@ -40,20 +43,37 @@ function TabsTrigger({ className, ...props }: React.ComponentProps<typeof TabsPr
 }
 
 function TabBar({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.List>) {
-  return <TabsList className={cn("h-8 w-full justify-start gap-5 rounded-none border-b px-5 py-0", className)} {...props} />
+  return (
+    <TabsList
+      className={cn("h-8 w-full justify-start gap-5 rounded-none border-b px-5 py-0", className)}
+      {...props}
+    />
+  )
 }
 
-function TabBarTrigger({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.Trigger>) {
+function TabBarTrigger({
+  className,
+  ...props
+}: React.ComponentProps<typeof TabsPrimitive.Trigger>) {
   return (
     <TabsTrigger
-      className={cn("h-full flex-none items-end rounded-none px-0 pb-1 text-label font-bold tracking-label data-[state=active]:text-ring after:bg-ring", className)}
+      className={cn(
+        "h-full flex-none items-end rounded-none px-0 pb-1 text-label font-bold tracking-label data-[state=active]:text-ring after:bg-ring",
+        className,
+      )}
       {...props}
     />
   )
 }
 
 function TabsContent({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.Content>) {
-  return <TabsPrimitive.Content data-slot="tabs-content" className={cn("flex-1 outline-none", className)} {...props} />
+  return (
+    <TabsPrimitive.Content
+      data-slot="tabs-content"
+      className={cn("flex-1 outline-none", className)}
+      {...props}
+    />
+  )
 }
 
 export { TabBar, TabBarTrigger, Tabs, TabsContent }

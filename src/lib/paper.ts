@@ -29,9 +29,7 @@ export function getOrientedPaperSize(id: PaperId, orientation: Orientation) {
 
 export function getHalfSheetPageSize(id: PaperId, orientation: Orientation) {
   const page = getFoldedPageSize(id)
-  return orientation === "portrait"
-    ? page
-    : { width: page.height, height: page.width }
+  return orientation === "portrait" ? page : { width: page.height, height: page.width }
 }
 
 export function formatMillimeters(value: number) {
@@ -44,9 +42,10 @@ export function getCenteredPatternBounds(
   spacing: number,
   radius: number,
 ) {
-  const margins = typeof margin === "number"
-    ? { top: margin, right: margin, bottom: margin, left: margin }
-    : margin
+  const margins =
+    typeof margin === "number"
+      ? { top: margin, right: margin, bottom: margin, left: margin }
+      : margin
   const availableWidth = Math.max(0, page.width - margins.left - margins.right)
   const availableHeight = Math.max(0, page.height - margins.top - margins.bottom)
   const width = Math.floor(availableWidth / spacing) * spacing

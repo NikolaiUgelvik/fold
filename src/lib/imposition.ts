@@ -66,7 +66,13 @@ export function createImposition({
         signature: signature + 1,
         sheet: sheet + 1,
         side: "back",
-        pages: getSidePages(binding, twoUp, firstLeaf + 1, [first + sheet * 2 + 1, last - sheet * 2 - 1], true),
+        pages: getSidePages(
+          binding,
+          twoUp,
+          firstLeaf + 1,
+          [first + sheet * 2 + 1, last - sheet * 2 - 1],
+          true,
+        ),
       })
     }
   }

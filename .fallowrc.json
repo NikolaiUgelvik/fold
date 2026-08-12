@@ -3,19 +3,13 @@
   "includeEntryExports": true,
   "typeAware": {
     "enabled": true,
-    "projects": [
-      "tsconfig.app.json",
-      "tsconfig.node.json"
-    ],
+    "projects": ["tsconfig.app.json", "tsconfig.node.json"],
     "require": "complete"
   },
   "duplicates": {
     "mode": "semantic",
     "near": true,
-    "ignore": [
-      "src/fonts.css",
-      "dist/**"
-    ],
+    "ignore": ["src/fonts.css", "dist/**"],
     "ignoreDefaults": false,
     "crossLanguage": true,
     "ignoreImports": false

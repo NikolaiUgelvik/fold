@@ -26,7 +26,8 @@
 }
 
 @theme inline {
-  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-sans:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-serif: "DM Serif Display", Georgia, Cambria, "Times New Roman", serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -72,17 +73,32 @@
 }
 
 @layer base {
-  * { @apply border-border outline-ring/50; }
-  body { @apply m-0 bg-background font-sans text-foreground antialiased; }
-  button, input { font: inherit; }
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply m-0 bg-background font-sans text-foreground antialiased;
+  }
+  button,
+  input {
+    font: inherit;
+  }
 }
 
-.print-root { display: none; }
-.tab-trigger-height { height: calc(100% - 1px); }
-.transition-input { transition-property: color, box-shadow; }
+.print-root {
+  display: none;
+}
+.tab-trigger-height {
+  height: calc(100% - 1px);
+}
+.transition-input {
+  transition-property: color, box-shadow;
+}
 
 @media (min-width: 64rem) {
-  .app-grid { grid-template-columns: 292px minmax(0, 1fr); }
+  .app-grid {
+    grid-template-columns: 292px minmax(0, 1fr);
+  }
 }
 
 @media (min-width: 80rem) {
@@ -96,24 +112,48 @@
   --select-x: 0;
   --select-y: 0;
 }
-[data-slot="select-content"][data-side="bottom"] { --select-y: -0.5rem; }
-[data-slot="select-content"][data-side="left"] { --select-x: 0.5rem; }
-[data-slot="select-content"][data-side="right"] { --select-x: -0.5rem; }
-[data-slot="select-content"][data-side="top"] { --select-y: 0.5rem; }
-[data-slot="select-content"][data-state="open"] { animation: select-in 150ms ease; }
-[data-slot="select-content"][data-state="closed"] { animation: select-out 150ms ease; }
+[data-slot="select-content"][data-side="bottom"] {
+  --select-y: -0.5rem;
+}
+[data-slot="select-content"][data-side="left"] {
+  --select-x: 0.5rem;
+}
+[data-slot="select-content"][data-side="right"] {
+  --select-x: -0.5rem;
+}
+[data-slot="select-content"][data-side="top"] {
+  --select-y: 0.5rem;
+}
+[data-slot="select-content"][data-state="open"] {
+  animation: select-in 150ms ease;
+}
+[data-slot="select-content"][data-state="closed"] {
+  animation: select-out 150ms ease;
+}
 
 @keyframes select-in {
-  from { opacity: 0; transform: translate(var(--select-x), var(--select-y)) scale(0.95); }
+  from {
+    opacity: 0;
+    transform: translate(var(--select-x), var(--select-y)) scale(0.95);
+  }
 }
 @keyframes select-out {
-  to { opacity: 0; transform: scale(0.95); }
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
 }
 
 @media print {
-  body { background: white; }
-  .screen-app { display: none; }
-  .print-root { display: block; }
+  body {
+    background: white;
+  }
+  .screen-app {
+    display: none;
+  }
+  .print-root {
+    display: block;
+  }
   .print-side {
     display: flex;
     overflow: hidden;
@@ -129,11 +169,18 @@
     height: 100%;
     overflow: hidden;
   }
-  .print-side[data-layout="full"] .paper-page { width: 100%; }
+  .print-side[data-layout="full"] .paper-page {
+    width: 100%;
+  }
   .print-side[data-layout="stacked"] {
     flex-direction: column;
     --page-divider: inset 0 0.12mm #ddd;
   }
-  .print-side[data-layout="stacked"] .paper-page { width: 100%; height: 50%; }
-  .paper-page + .paper-page { box-shadow: var(--page-divider, inset 0.12mm 0 #ddd); }
+  .print-side[data-layout="stacked"] .paper-page {
+    width: 100%;
+    height: 50%;
+  }
+  .paper-page + .paper-page {
+    box-shadow: var(--page-divider, inset 0.12mm 0 #ddd);
+  }
 }

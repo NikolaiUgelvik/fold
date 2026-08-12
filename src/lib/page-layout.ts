@@ -22,7 +22,9 @@ export function getPageLayout(
   }
 
   const paperOrientation = twoUp
-    ? orientation === "portrait" ? "landscape" : "portrait"
+    ? orientation === "portrait"
+      ? "landscape"
+      : "portrait"
     : orientation
 
   return {
@@ -31,7 +33,9 @@ export function getPageLayout(
       ? getHalfSheetPageSize(paperId, orientation)
       : getOrientedPaperSize(paperId, orientation),
     layout: twoUp
-      ? orientation === "landscape" ? "stacked" as const : "side-by-side" as const
-      : "full" as const,
+      ? orientation === "landscape"
+        ? ("stacked" as const)
+        : ("side-by-side" as const)
+      : ("full" as const),
   }
 }
