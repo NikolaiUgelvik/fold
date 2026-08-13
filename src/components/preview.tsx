@@ -1,4 +1,17 @@
-import { ArrowLeft, ArrowRight, ArrowUpRight, Minus, Plus } from "lucide-react"
+import {
+  AlignJustify,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUpRight,
+  File,
+  Grid2X2,
+  Grid3X3,
+  Grip,
+  Heading1,
+  List,
+  Minus,
+  Plus,
+} from "lucide-react"
 import { type CSSProperties, type ReactNode, useState } from "react"
 
 import { PageSvg } from "@/components/notebook-page"
@@ -27,41 +40,41 @@ type PreviewContentProps = PreviewProps & {
   guidePreview: ReturnType<typeof createPunchGuideViewModel<Settings>>
 }
 
+const pageTypeIcons = {
+  dots: { icon: Grip, label: "dotted page" },
+  lines: { icon: AlignJustify, label: "lined page" },
+  grid: { icon: Grid2X2, label: "grid page" },
+  graph: { icon: Grid3X3, label: "graph paper page" },
+  blank: { icon: File, label: "blank page" },
+  title: { icon: Heading1, label: "title page" },
+  index: { icon: List, label: "index page" },
+}
+
 function PageThumbnail({
   settings,
-  punchHoleSets,
-  pageSize,
   logicalPage,
-  showPunchHoles,
   selected,
   onClick,
 }: {
   settings: Settings
-  punchHoleSets: Settings["punchHoleSets"]
-  pageSize: { width: number; height: number }
   logicalPage: number
-  showPunchHoles: boolean
   selected: boolean
   onClick: () => void
 }) {
   const page = displayedPage(settings, logicalPage)
+  const pageType = settings.customPages[logicalPage]?.type ?? settings.pattern
+  const { icon: Icon, label } = pageTypeIcons[pageType]
 
   return (
     <button
       type="button"
-      className={`h-18 shrink-0 overflow-hidden rounded-sm border focus-visible:outline-2 focus-visible:outline-ring ${selected ? "border-ring ring-1 ring-ring" : ""}`}
-      style={{ aspectRatio: `${pageSize.width} / ${pageSize.height}` }}
-      aria-label={`Page ${page}`}
+      className={`flex h-18 w-14 shrink-0 flex-col items-center justify-center gap-1 rounded-sm border bg-card text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring ${selected ? "border-ring text-foreground ring-1 ring-ring" : ""}`}
+      aria-label={`Page ${page}, ${label}`}
+      aria-current={selected ? "page" : undefined}
       onClick={onClick}
     >
-      <PageSvg
-        settings={settings}
-        punchHoleSets={punchHoleSets}
-        logicalPage={logicalPage}
-        paperColor={settings.previewPaperColor}
-        showPunchHoles={showPunchHoles}
-        className="block h-full w-full"
-      />
+      <Icon className="size-5" aria-hidden />
+      <span className="text-caption font-semibold text-foreground">{page}</span>
     </button>
   )
 }
@@ -207,13 +220,18 @@ const PreviewPage = (props: PreviewContentProps) => {
 }
 
 function PreviewStrip(props: PreviewContentProps) {
-  const { settings, currentPage, onCurrentPageChange, showPlan, onShowPlanChange, document } = props
-  const { punchHoleSets, punchHolePages, pageSize } = document
+  const {
+    settings,
+    currentPage,
+    onCurrentPageChange,
+    onPreviewPunchGuideChange,
+    showPlan,
+    onShowPlanChange,
+    document,
+    guidePreview,
+  } = props
   const firstSignature = document.sides.filter((side) => side.signature === 1)
-  const visiblePages = Array.from(
-    { length: Math.min(document.totalPages, 10) },
-    (_, index) => index + 1,
-  )
+  const pages = Array.from({ length: document.totalPages }, (_, index) => index + 1)
   return (
     <section className="shrink-0 border-t bg-secondary px-4 py-3">
       <div className="mb-2 flex items-center justify-between">
@@ -256,15 +274,15 @@ function PreviewStrip(props: PreviewContentProps) {
                 </div>
               </div>
             ))
-          : visiblePages.map((page) => (
+          : pages.map((page) => (
               <PageThumbnail
                 settings={settings}
-                punchHoleSets={punchHoleSets}
-                pageSize={pageSize}
                 logicalPage={page}
-                showPunchHoles={punchHolePages.has(page)}
-                selected={currentPage === page}
-                onClick={() => onCurrentPageChange(page)}
+                selected={!guidePreview.shown && currentPage === page}
+                onClick={() => {
+                  onCurrentPageChange(page)
+                  onPreviewPunchGuideChange(false)
+                }}
                 key={page}
               />
             ))}
