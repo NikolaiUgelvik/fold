@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowRight, ArrowUpRight, Minus, Plus } from "lucide-react"
-import { type ReactNode, useState } from "react"
+import { type CSSProperties, type ReactNode, useState } from "react"
 
 import { PageSvg } from "@/components/notebook-page"
 import { Button } from "@/components/ui/button"
@@ -158,15 +158,18 @@ const PreviewPage = (props: PreviewContentProps) => {
   const { punchHoleSets, punchHolePages, pageLayout, pageSize } = document
   const { shown: showPunchGuide, guide: punchGuide, ariaLabel: guideAriaLabel } = guidePreview
   return (
-    <div className="flex min-h-135 flex-1 overflow-auto p-4 lg:p-6">
+    <div className="flex min-h-135 flex-1 overflow-auto p-4 lg:p-6 xl:min-h-0">
       <div
-        className="relative m-auto shrink-0"
-        style={{
-          aspectRatio: showPunchGuide
-            ? `${pageLayout.paper.width} / ${pageLayout.paper.height}`
-            : `${pageSize.width} / ${pageSize.height}`,
-          height: `min(${zoom * 0.7}vh, ${zoom * 7.4}px)`,
-        }}
+        className="relative m-auto shrink-0 xl:max-h-[var(--preview-max-height)]"
+        style={
+          {
+            aspectRatio: showPunchGuide
+              ? `${pageLayout.paper.width} / ${pageLayout.paper.height}`
+              : `${pageSize.width} / ${pageSize.height}`,
+            height: `min(${zoom * 0.7}vh, ${zoom * 7.4}px)`,
+            "--preview-max-height": `${zoom}%`,
+          } as CSSProperties
+        }
       >
         {showPunchGuide && punchGuide ? (
           <div
@@ -283,7 +286,7 @@ export function Preview(props: PreviewProps): ReactNode {
     guidePreview: createPunchGuideViewModel(props.document, props.previewPunchGuide),
   }
   return (
-    <main className="flex min-h-175 min-w-0 flex-col bg-canvas xl:h-full xl:min-h-0">
+    <main className="flex min-h-175 min-w-0 flex-col bg-canvas xl:h-full xl:min-h-0 xl:overflow-hidden">
       <PreviewToolbar {...contentProps} />
 
       <PreviewPage {...contentProps} />
