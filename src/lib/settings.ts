@@ -121,6 +121,13 @@ export function resolvePageAppearance(
   }
 }
 
+export function countPageAppearanceOverrides(
+  overrides: Settings["pageAppearanceOverrides"],
+  logicalPage: number,
+) {
+  return Object.keys(overrides[logicalPage] ?? {}).length
+}
+
 export function setPageAppearanceOverride<Key extends PageAppearanceOverrideKey>(
   overrides: Settings["pageAppearanceOverrides"],
   logicalPage: number,

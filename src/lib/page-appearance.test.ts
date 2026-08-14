@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import {
+  countPageAppearanceOverrides,
   initialSettings,
   isPageAppearanceKey,
   type PageAppearanceOverride,
@@ -51,6 +52,13 @@ test("resolves every printable page appearance override", () => {
   for (const [key, value] of Object.entries(override)) {
     assert.deepEqual((resolved as unknown as Record<string, unknown>)[key], value)
   }
+})
+
+test("counts sparse appearance overrides for a logical page", () => {
+  const overrides = { 2: { margin: 18, pageNumberText: "iv" } }
+
+  assert.equal(countPageAppearanceOverrides(overrides, 2), 2)
+  assert.equal(countPageAppearanceOverrides(overrides, 3), 0)
 })
 
 test("stores only the changed field and merges updates without mutation", () => {

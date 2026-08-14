@@ -23,6 +23,7 @@ import type { PrintPass } from "@/lib/imposition"
 import { displayedPage, type PageNumberVisibility } from "@/lib/page-numbering"
 import { usesSeparatePunchGuide } from "@/lib/punch-holes"
 import {
+  countPageAppearanceOverrides,
   isPageAppearanceKey,
   type PageAppearance,
   type PageAppearanceOverride,
@@ -683,7 +684,10 @@ export function PageProperties(props: PagePropertiesProps): ReactNode {
           <AppearanceScopeControl
             scope={scope}
             currentPage={currentPage}
-            overrideCount={Object.keys(settings.pageAppearanceOverrides[currentPage] ?? {}).length}
+            overrideCount={countPageAppearanceOverrides(
+              settings.pageAppearanceOverrides,
+              currentPage,
+            )}
             onScopeChange={setScope}
             onReset={() =>
               onSettingsChange(

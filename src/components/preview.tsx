@@ -12,7 +12,7 @@ import {
   Minus,
   Plus,
 } from "lucide-react"
-import { type CSSProperties, type ReactNode, useState } from "react"
+import { type CSSProperties, type ReactNode, useMemo, useState } from "react"
 
 import { PageSvg } from "@/components/notebook-page"
 import { Button } from "@/components/ui/button"
@@ -20,7 +20,7 @@ import type { ImpositionSide } from "@/lib/imposition"
 import { type createNotebookDocument, createPunchGuideViewModel } from "@/lib/notebook-document"
 import { formatMillimeters } from "@/lib/paper"
 import { usesSeparatePunchGuide } from "@/lib/punch-holes"
-import { resolvePageAppearance, type Settings } from "@/lib/settings"
+import { countPageAppearanceOverrides, resolvePageAppearance, type Settings } from "@/lib/settings"
 
 type PreviewProps = {
   settings: Settings
@@ -52,11 +52,13 @@ const pageTypeIcons = {
 function PageThumbnail({
   settings,
   logicalPage,
+  overrideCount,
   selected,
   onClick,
 }: {
   settings: Settings
   logicalPage: number
+  overrideCount: number
   selected: boolean
   onClick: () => void
 }) {
@@ -67,11 +69,19 @@ function PageThumbnail({
   return (
     <button
       type="button"
-      className={`flex h-18 w-14 shrink-0 flex-col items-center justify-center gap-1 rounded-sm border bg-card text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring ${selected ? "border-ring text-foreground ring-1 ring-ring" : ""}`}
-      aria-label={`Logical page ${logicalPage}, displayed number ${appearance.pageNumberText}, ${label}`}
+      className={`relative flex h-18 w-14 shrink-0 flex-col items-center justify-center gap-1 rounded-sm border bg-card text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring ${selected ? "border-ring text-foreground ring-1 ring-ring" : ""}`}
+      aria-label={`Logical page ${logicalPage}, displayed number ${appearance.pageNumberText}, ${label}${overrideCount > 0 ? `, ${overrideCount} appearance ${overrideCount === 1 ? "override" : "overrides"}` : ""}`}
       aria-current={selected ? "page" : undefined}
       onClick={onClick}
     >
+      {overrideCount > 0 && (
+        <span
+          className="absolute top-0.5 right-0.5 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-0.5 text-3xs font-bold leading-none text-primary-foreground"
+          aria-hidden="true"
+        >
+          {overrideCount}
+        </span>
+      )}
       <Icon className="size-5" aria-hidden />
       <span className="max-w-12 truncate text-caption font-semibold text-foreground">
         {appearance.pageNumberText}
@@ -233,6 +243,17 @@ function PreviewStrip(props: PreviewContentProps) {
   } = props
   const firstSignature = document.sides.filter((side) => side.signature === 1)
   const pages = Array.from({ length: document.totalPages }, (_, index) => index + 1)
+  const overrideCounts = useMemo(() => {
+    const counts: Record<number, number> = {}
+    for (const page of Object.keys(settings.pageAppearanceOverrides)) {
+      const logicalPage = Number(page)
+      counts[logicalPage] = countPageAppearanceOverrides(
+        settings.pageAppearanceOverrides,
+        logicalPage,
+      )
+    }
+    return counts
+  }, [settings.pageAppearanceOverrides])
   return (
     <section className="shrink-0 border-t bg-secondary px-4 py-3">
       <div className="mb-2 flex items-center justify-between">
@@ -279,6 +300,7 @@ function PreviewStrip(props: PreviewContentProps) {
               <PageThumbnail
                 settings={settings}
                 logicalPage={page}
+                overrideCount={overrideCounts[page] ?? 0}
                 selected={!guidePreview.shown && currentPage === page}
                 onClick={() => {
                   onCurrentPageChange(page)
