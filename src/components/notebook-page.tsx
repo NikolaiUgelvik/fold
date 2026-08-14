@@ -3,7 +3,7 @@ import { useId } from "react"
 import { parseIndexEntries } from "@/lib/custom-pages"
 import { isFoldedBinding } from "@/lib/imposition"
 import { getPageLayout } from "@/lib/page-layout"
-import { displayedPage, getOuterPageNumberEdge, showsPageNumber } from "@/lib/page-numbering"
+import { displayedPage, getOuterPageNumberEdge } from "@/lib/page-numbering"
 import { getCenteredPatternBounds } from "@/lib/paper"
 import {
   type BindingEdge,
@@ -11,7 +11,7 @@ import {
   getPunchHoles,
   type HoleSet,
 } from "@/lib/punch-holes"
-import type { Settings } from "@/lib/settings"
+import { type ResolvedPageAppearance, resolvePageAppearance, type Settings } from "@/lib/settings"
 
 function getPatternBasics(settings: Settings) {
   const spacing = settings.pattern === "dots" ? settings.dotSpacing : settings.lineSpacing
@@ -61,14 +61,13 @@ function getMajorBounds(
 }
 
 function getPageMetrics(settings: Settings, logicalPage: number) {
-  const page = displayedPage(settings, logicalPage)
   const pageSize = getPageLayout(
     settings.paper,
     settings.binding,
     settings.yotsumeOrientation,
     settings.yotsumeTwoUp,
   ).page
-  const numberEdge = getOuterPageNumberEdge(page)
+  const numberEdge = getOuterPageNumberEdge(displayedPage(settings, logicalPage))
   const customPage = settings.customPages[logicalPage]
   const indexEntries =
     customPage?.type === "index"
@@ -105,7 +104,6 @@ function getPageMetrics(settings: Settings, logicalPage: number) {
   const borderX = pageMargins.left + settings.borderWidth / 2
   const borderY = pageMargins.top + settings.borderWidth / 2
   return {
-    page,
     pageSize,
     numberEdge,
     customPage,
@@ -361,17 +359,15 @@ function getPageNumberAlignment(settings: Settings, metrics: PageMetrics) {
 function PageNumber({
   settings,
   metrics,
-  logicalPage,
 }: {
-  settings: Settings
+  settings: Settings & Pick<ResolvedPageAppearance, "numberVisible" | "pageNumberText">
   metrics: PageMetrics
-  logicalPage: number
 }) {
-  const { page, pageSize, customPage } = metrics
+  const { pageSize } = metrics
   const { x, anchor } = getPageNumberAlignment(settings, metrics)
   return (
     <>
-      {customPage?.type !== "title" && showsPageNumber(settings.numberVisibility, logicalPage) && (
+      {settings.numberVisible && (
         <text
           x={x}
           y={pageSize.height - 7}
@@ -382,7 +378,7 @@ function PageNumber({
           fontWeight={settings.numberBold ? 700 : 400}
           textAnchor={anchor}
         >
-          {page}
+          {settings.pageNumberText}
         </text>
       )}
     </>
@@ -406,7 +402,8 @@ export function PageSvg({
   className?: string
   ariaLabel?: string
 }) {
-  const metrics = getPageMetrics(settings, logicalPage)
+  const pageSettings = resolvePageAppearance(settings, logicalPage)
+  const metrics = getPageMetrics(pageSettings, logicalPage)
   const patternId = useId()
   const majorPatternId = useId()
   const punchHoles = getPunchHoles(
@@ -428,12 +425,12 @@ export function PageSvg({
     >
       <rect width={metrics.pageSize.width} height={metrics.pageSize.height} fill={paperColor} />
       <PagePattern
-        settings={settings}
+        settings={pageSettings}
         metrics={metrics}
         patternId={patternId}
         majorPatternId={majorPatternId}
       />
-      <PageBorder settings={settings} metrics={metrics} />
+      <PageBorder settings={pageSettings} metrics={metrics} />
       <CustomPageLayer metrics={metrics} />
       {showPunchHoles && (
         <g fill="none" stroke="#30302c" strokeWidth="0.25">
@@ -447,7 +444,7 @@ export function PageSvg({
           ))}
         </g>
       )}
-      <PageNumber settings={settings} metrics={metrics} logicalPage={logicalPage} />
+      <PageNumber settings={pageSettings} metrics={metrics} />
     </svg>
   )
 }

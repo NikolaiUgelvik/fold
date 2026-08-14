@@ -18,10 +18,9 @@ import { PageSvg } from "@/components/notebook-page"
 import { Button } from "@/components/ui/button"
 import type { ImpositionSide } from "@/lib/imposition"
 import { type createNotebookDocument, createPunchGuideViewModel } from "@/lib/notebook-document"
-import { displayedPage } from "@/lib/page-numbering"
 import { formatMillimeters } from "@/lib/paper"
 import { usesSeparatePunchGuide } from "@/lib/punch-holes"
-import type { Settings } from "@/lib/settings"
+import { resolvePageAppearance, type Settings } from "@/lib/settings"
 
 type PreviewProps = {
   settings: Settings
@@ -61,20 +60,22 @@ function PageThumbnail({
   selected: boolean
   onClick: () => void
 }) {
-  const page = displayedPage(settings, logicalPage)
-  const pageType = settings.customPages[logicalPage]?.type ?? settings.pattern
+  const appearance = resolvePageAppearance(settings, logicalPage)
+  const pageType = settings.customPages[logicalPage]?.type ?? appearance.pattern
   const { icon: Icon, label } = pageTypeIcons[pageType]
 
   return (
     <button
       type="button"
       className={`flex h-18 w-14 shrink-0 flex-col items-center justify-center gap-1 rounded-sm border bg-card text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring ${selected ? "border-ring text-foreground ring-1 ring-ring" : ""}`}
-      aria-label={`Page ${page}, ${label}`}
+      aria-label={`Logical page ${logicalPage}, displayed number ${appearance.pageNumberText}, ${label}`}
       aria-current={selected ? "page" : undefined}
       onClick={onClick}
     >
       <Icon className="size-5" aria-hidden />
-      <span className="text-caption font-semibold text-foreground">{page}</span>
+      <span className="max-w-12 truncate text-caption font-semibold text-foreground">
+        {appearance.pageNumberText}
+      </span>
     </button>
   )
 }
@@ -268,7 +269,7 @@ function PreviewStrip(props: PreviewContentProps) {
                 >
                   {side.pages.map((page) => (
                     <span className="py-2" key={page}>
-                      {displayedPage(settings, page)}
+                      {resolvePageAppearance(settings, page).pageNumberText}
                     </span>
                   ))}
                 </div>

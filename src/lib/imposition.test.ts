@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { createImposition, getPrintSides, isFoldedBinding } from "./imposition.ts"
+import { createImposition, getPrintPages, getPrintSides, isFoldedBinding } from "./imposition.ts"
 
 test("imposes folded sheets in signature order", () => {
   assert.deepEqual(createImposition({ binding: "coptic", signatures: 2, sheetsPerSignature: 2 }), [
@@ -48,6 +48,8 @@ test("selects manual duplex passes", () => {
     )
   }
   assert.deepEqual(getPrintSides(sides, "guide"), [])
+  assert.deepEqual(getPrintPages(sides, "fronts"), [8, 1, 6, 3])
+  assert.deepEqual(getPrintPages(sides, "guide"), [])
   assert.deepEqual(
     sides.map((side) => side.pages),
     [

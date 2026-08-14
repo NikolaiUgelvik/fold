@@ -27,6 +27,7 @@ export interface NotebookDocumentSettings {
   borderWidth: number
   numberVisibility: "both" | "right" | "left" | "none"
   customPages: Record<number, unknown>
+  pageAppearanceOverrides: Record<number, unknown>
 }
 
 function createPunchGuide<T extends NotebookDocumentSettings>(
@@ -40,6 +41,7 @@ function createPunchGuide<T extends NotebookDocumentSettings>(
       borderWidth: 0,
       numberVisibility: "none",
       customPages: {},
+      pageAppearanceOverrides: {},
     } as T,
     pages: sides[0]?.pages ?? [],
   }

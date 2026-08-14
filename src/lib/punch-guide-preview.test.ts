@@ -19,6 +19,9 @@ const settings: NotebookDocumentSettings = {
   borderWidth: 1,
   numberVisibility: "both",
   customPages: { 1: { type: "title" } },
+  pageAppearanceOverrides: {
+    1: { pattern: "graph", borderWidth: 2, numberVisible: true, pageNumberText: "LEAK" },
+  },
 }
 
 test("models the separate punch guide preview", () => {
@@ -35,6 +38,7 @@ test("models the separate punch guide preview", () => {
   assert.equal(shown.guide?.settings.borderWidth, 0)
   assert.equal(shown.guide?.settings.numberVisibility, "none")
   assert.deepEqual(shown.guide?.settings.customPages, {})
+  assert.deepEqual(shown.guide?.settings.pageAppearanceOverrides, {})
 })
 
 test("omits a guide for embedded punch indicators", () => {

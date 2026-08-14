@@ -7,8 +7,8 @@ import { PageProperties } from "@/components/page-properties"
 import { Preview } from "@/components/preview"
 import { PrintDocument } from "@/components/print-document"
 import { Button } from "@/components/ui/button"
-import { ensureFontLoaded, getNumberFont, numberFonts } from "@/lib/font-loading"
-import type { PrintPass } from "@/lib/imposition"
+import { ensurePageNumberFontsLoaded } from "@/lib/font-loading"
+import { getPrintPages, type PrintPass } from "@/lib/imposition"
 import { createNotebookDocument } from "@/lib/notebook-document"
 import { type PunchHolePlacement, usesSeparatePunchGuide } from "@/lib/punch-holes"
 import { initialSettings, type Settings, type SettingsUpdate } from "@/lib/settings"
@@ -27,20 +27,6 @@ function usePrintDialog(
       window.removeEventListener("afterprint", clear)
     }
   }, [printSettings, setPrintSettings])
-}
-
-function useFontPreload(setFontError: (value: string) => void) {
-  useEffect(() => {
-    let active = true
-    Promise.all(
-      numberFonts.map((font) => document.fonts.load(`16px ${font.value}`, `${font.label} 1 2 3`)),
-    ).catch(() => {
-      if (active) setFontError("Some page-number fonts could not be loaded.")
-    })
-    return () => {
-      active = false
-    }
-  }, [setFontError])
 }
 
 const documentNames: Record<Settings["pattern"], string> = {
@@ -135,7 +121,6 @@ function App() {
     () => setCurrentPage((page) => Math.min(page, document.totalPages)),
     [document.totalPages],
   )
-  useFontPreload(setFontError)
   usePrintDialog(printSettings, setPrintSettings)
 
   function changePunchHolePlacement(placement: PunchHolePlacement) {
@@ -148,13 +133,18 @@ function App() {
 
   const exportPdf = async () => {
     try {
-      const font = `${settings.numberItalic ? "italic" : "normal"} ${settings.numberBold ? 700 : 400} 16px ${settings.numberFont}`
-      await ensureFontLoaded(window.document.fonts, font, "1 2 3")
+      await ensurePageNumberFontsLoaded(
+        window.document.fonts,
+        settings,
+        getPrintPages(document.sides, printPass),
+      )
       setFontError(null)
       setPrintSettings({ settings, pass: printPass })
-    } catch {
+    } catch (error) {
       setFontError(
-        `Could not load ${getNumberFont(settings.numberFont).label}. Export was cancelled.`,
+        error instanceof Error
+          ? `${error.message}. Export was cancelled.`
+          : "Could not load a page-number font. Export was cancelled.",
       )
     }
   }

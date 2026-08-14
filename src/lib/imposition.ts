@@ -33,6 +33,10 @@ export function getPrintSides(sides: ImpositionSide[], pass: PrintPass) {
   return metadata.reversed ? selected.reverse() : selected
 }
 
+export function getPrintPages(sides: ImpositionSide[], pass: PrintPass) {
+  return getPrintSides(sides, pass).flatMap((side) => side.pages)
+}
+
 function positiveInteger(value: number, name: string) {
   if (!Number.isInteger(value) || value < 1) {
     throw new RangeError(`${name} must be a positive integer`)

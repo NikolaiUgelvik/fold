@@ -18,6 +18,7 @@ const base: NotebookDocumentSettings = {
   borderWidth: 1,
   numberVisibility: "both",
   customPages: {},
+  pageAppearanceOverrides: {},
 }
 
 test("creates folded notebook geometry and punch pages", () => {

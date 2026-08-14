@@ -1,5 +1,5 @@
-import { Download, Hash } from "lucide-react"
-import type { ReactNode } from "react"
+import { Download } from "lucide-react"
+import { type ReactNode, useState } from "react"
 
 import {
   CheckboxField,
@@ -18,11 +18,22 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { TabBar, TabBarTrigger, Tabs, TabsContent } from "@/components/ui/tabs"
-import { getNumberFont, numberFonts } from "@/lib/font-loading"
+import { getNumberFont, isPageNumberTextSupported, numberFonts } from "@/lib/font-loading"
 import type { PrintPass } from "@/lib/imposition"
 import { displayedPage, type PageNumberVisibility } from "@/lib/page-numbering"
 import { usesSeparatePunchGuide } from "@/lib/punch-holes"
-import type { Settings, SettingsUpdate } from "@/lib/settings"
+import {
+  isPageAppearanceKey,
+  type PageAppearance,
+  type PageAppearanceOverride,
+  type PageAppearanceOverrideKey,
+  resetPageAppearanceOverride,
+  resolvePageAppearance,
+  type Settings,
+  type SettingsUpdate,
+  setPageAppearanceOverride,
+  setPageAppearanceSettingOverride,
+} from "@/lib/settings"
 import { tropheeColors } from "@/lib/trophee-colors"
 
 type PagePropertiesProps = {
@@ -34,12 +45,17 @@ type PagePropertiesProps = {
   onExport: () => void
 }
 
-type NumberSettingKey = Exclude<
-  {
-    [Key in keyof Settings]: Settings[Key] extends number ? Key : never
-  }[keyof Settings],
-  "punchHoleDiameter" | "punchHoleEndInset" | "sheets" | "signatures"
->
+type NumberSettingKey = {
+  [Key in keyof PageAppearance]: PageAppearance[Key] extends number ? Key : never
+}[keyof PageAppearance]
+
+type AppearanceScope = "all" | "page"
+
+type AppearanceTabProps = PagePropertiesProps & {
+  scope: AppearanceScope
+  bookSettings: Settings
+  onPageNumberTextChange: (value: string) => void
+}
 
 function SectionTitle({ children }: { children: string }) {
   return (
@@ -71,7 +87,7 @@ function StyleTab({ settings, onSettingsChange }: PagePropertiesProps) {
   return (
     <TabsContent value="style" className="mt-0">
       <section className="grid gap-3 border-b p-4.5">
-        <SectionTitle>Preview paper color</SectionTitle>
+        <SectionTitle>Preview paper color · Book-wide</SectionTitle>
         <Select
           value={settings.previewPaperColor}
           onValueChange={(value) => onSettingsChange("previewPaperColor", value)}
@@ -192,8 +208,17 @@ function StyleTab({ settings, onSettingsChange }: PagePropertiesProps) {
   )
 }
 
-function LayoutTab({ settings, pageSize, onSettingsChange }: PagePropertiesProps) {
+function LayoutTab({
+  settings,
+  bookSettings,
+  currentPage,
+  pageSize,
+  scope,
+  onSettingsChange,
+  onPageNumberTextChange,
+}: AppearanceTabProps) {
   const selectedNumberFont = getNumberFont(settings.numberFont)
+  const customNumberText = bookSettings.pageAppearanceOverrides[currentPage]?.pageNumberText ?? ""
   return (
     <TabsContent value="layout" className="mt-0">
       <section className="grid gap-3 border-b p-4.5">
@@ -248,12 +273,16 @@ function LayoutTab({ settings, pageSize, onSettingsChange }: PagePropertiesProps
               onChange={(value) =>
                 onSettingsChange("numberVisibility", value as PageNumberVisibility)
               }
-              options={{
-                both: "Left & right",
-                right: "Right only",
-                left: "Left only",
-                none: "Hidden",
-              }}
+              options={
+                scope === "all"
+                  ? {
+                      both: "Left & right",
+                      right: "Right only",
+                      left: "Left only",
+                      none: "Hidden",
+                    }
+                  : { both: "Shown", none: "Hidden" }
+              }
             />
           </div>
           <div className="grid gap-1.5">
@@ -271,6 +300,38 @@ function LayoutTab({ settings, pageSize, onSettingsChange }: PagePropertiesProps
             />
           </div>
         </div>
+        {scope === "page" && (
+          <div className="grid gap-1.5">
+            <label className="text-sm font-medium" htmlFor="displayed-page-number">
+              Displayed number
+            </label>
+            <div className="flex gap-2">
+              <Input
+                id="displayed-page-number"
+                value={customNumberText}
+                maxLength={24}
+                aria-describedby="displayed-page-number-help"
+                placeholder={`Automatic: ${displayedPage(bookSettings, currentPage)}`}
+                onChange={(event) => {
+                  if (isPageNumberTextSupported(event.target.value))
+                    onPageNumberTextChange(event.target.value)
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!customNumberText}
+                onClick={() => onPageNumberTextChange("")}
+              >
+                Automatic
+              </Button>
+            </div>
+            <p id="displayed-page-number-help" className="text-2xs leading-4 text-muted-foreground">
+              Use up to 24 English letters, numbers, spaces, or punctuation. Leave blank for the
+              automatic sequence; later pages are unchanged.
+            </p>
+          </div>
+        )}
         <fieldset disabled={settings.numberVisibility === "none"} className="grid gap-3">
           <div className="grid gap-3">
             <div className="grid gap-1.5">
@@ -344,13 +405,15 @@ function LayoutTab({ settings, pageSize, onSettingsChange }: PagePropertiesProps
               </Button>
             </div>
           </fieldset>
-          <NumberField
-            label="Start at"
-            value={settings.firstPage}
-            min={1}
-            max={9999}
-            onChange={(value) => onSettingsChange("firstPage", value)}
-          />
+          {scope === "all" && (
+            <NumberField
+              label="Automatic sequence starts at"
+              value={settings.firstPage}
+              min={1}
+              max={9999}
+              onChange={(value) => onSettingsChange("firstPage", value)}
+            />
+          )}
         </fieldset>
       </section>
     </TabsContent>
@@ -436,8 +499,8 @@ function PageTab({ settings, currentPage, onSettingsChange }: PagePropertiesProp
           </>
         )}
         <p className="text-2xs leading-4 text-muted-foreground">
-          A custom template replaces the pattern and border on this page. Title pages also hide the
-          page number.
+          Title and index templates replace the pattern and border. Title templates hide page
+          numbers by default; appearance overrides are retained.
         </p>
       </section>
     </TabsContent>
@@ -484,34 +547,166 @@ function PrintInstructions({ settings, printPass, onExport }: PagePropertiesProp
   )
 }
 
+function AppearanceScopeControl({
+  scope,
+  currentPage,
+  overrideCount,
+  onScopeChange,
+  onReset,
+}: {
+  scope: AppearanceScope
+  currentPage: number
+  overrideCount: number
+  onScopeChange: (scope: AppearanceScope) => void
+  onReset: () => void
+}) {
+  return (
+    <fieldset className="grid gap-2 border-b bg-muted px-4.5 py-3.5">
+      <legend className="text-xs font-semibold">Apply appearance to</legend>
+      <div className="grid grid-cols-2 gap-2">
+        {(
+          [
+            ["all", "All pages", "Book defaults"],
+            ["page", "This page", `Page ${currentPage}`],
+          ] as const
+        ).map(([value, label, description]) => (
+          <label
+            className={`flex cursor-pointer items-center gap-2 rounded-md border bg-background px-2.5 py-2 ${scope === value ? "border-ring ring-1 ring-ring" : ""}`}
+            key={value}
+          >
+            <input
+              type="radio"
+              name="appearance-scope"
+              value={value}
+              checked={scope === value}
+              className="size-3.5 accent-ring"
+              onChange={() => onScopeChange(value)}
+            />
+            <span>
+              <strong className="block text-xs">{label}</strong>
+              <span className="block text-2xs text-muted-foreground">{description}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+      {scope === "all" ? (
+        <p className="text-2xs leading-4 text-muted-foreground">
+          Sets book defaults. Existing page overrides are kept.
+        </p>
+      ) : (
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-2xs leading-4 text-muted-foreground">
+            {overrideCount} {overrideCount === 1 ? "override" : "overrides"}. Other values inherit
+            book defaults.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-7 px-2 text-2xs"
+            disabled={overrideCount === 0}
+            onClick={onReset}
+          >
+            Reset to book defaults
+          </Button>
+        </div>
+      )}
+    </fieldset>
+  )
+}
+
 // fallow-ignore-next-line private-type-leak -- Props are private to this feature module.
 export function PageProperties(props: PagePropertiesProps): ReactNode {
+  const [activeTab, setActiveTab] = useState<"style" | "layout" | "page">("style")
+  const [scope, setScope] = useState<AppearanceScope>("all")
+  const { settings, currentPage, onSettingsChange } = props
+  const appearance = resolvePageAppearance(settings, currentPage)
+  const scopedSettings =
+    scope === "all"
+      ? settings
+      : {
+          ...settings,
+          ...appearance,
+          numberVisibility: appearance.numberVisible ? ("both" as const) : ("none" as const),
+        }
+
+  function setPageAppearanceValue<Key extends PageAppearanceOverrideKey>(
+    key: Key,
+    value: PageAppearanceOverride[Key] | undefined,
+  ) {
+    onSettingsChange(
+      "pageAppearanceOverrides",
+      setPageAppearanceOverride(settings.pageAppearanceOverrides, currentPage, key, value),
+    )
+  }
+
+  const updateScopedSettings: SettingsUpdate = (key, value) => {
+    if (scope === "all" || !isPageAppearanceKey(key)) {
+      onSettingsChange(key, value)
+      return
+    }
+
+    onSettingsChange(
+      "pageAppearanceOverrides",
+      setPageAppearanceSettingOverride(
+        settings,
+        currentPage,
+        key,
+        value as PageAppearance[typeof key],
+      ),
+    )
+  }
+
+  const scopedProps = {
+    ...props,
+    settings: scopedSettings,
+    onSettingsChange: updateScopedSettings,
+  }
+
   return (
     <aside className="border-t bg-background lg:col-span-2 xl:col-span-1 xl:h-full xl:overflow-y-auto xl:border-t-0 xl:border-l">
       <div className="px-4.5 pt-4.5 pb-2">
         <h2 className="font-serif text-heading">Properties</h2>
       </div>
 
-      <Tabs defaultValue="style" className="gap-0">
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => setActiveTab(value as typeof activeTab)}
+        className="gap-0"
+      >
         <TabBar className="px-4.5">
           <TabBarTrigger value="style">STYLE</TabBarTrigger>
           <TabBarTrigger value="layout">LAYOUT</TabBarTrigger>
-          <TabBarTrigger value="page">PAGE</TabBarTrigger>
+          <TabBarTrigger value="page">CONTENT</TabBarTrigger>
         </TabBar>
 
-        <div className="flex items-center gap-3 border-b bg-muted px-4.5 py-3.5">
-          <span className="grid size-8.5 place-items-center rounded-md border bg-background">
-            <Hash className="size-4 text-ring" />
-          </span>
-          <div>
-            <p className="text-xs font-semibold">Page style</p>
-            <p className="text-2xs text-muted-foreground">Pattern · margins · numbering</p>
-          </div>
-        </div>
+        {activeTab !== "page" && (
+          <AppearanceScopeControl
+            scope={scope}
+            currentPage={currentPage}
+            overrideCount={Object.keys(settings.pageAppearanceOverrides[currentPage] ?? {}).length}
+            onScopeChange={setScope}
+            onReset={() =>
+              onSettingsChange(
+                "pageAppearanceOverrides",
+                resetPageAppearanceOverride(settings.pageAppearanceOverrides, currentPage),
+              )
+            }
+          />
+        )}
 
-        <StyleTab {...props} />
+        <StyleTab {...scopedProps} />
 
-        <LayoutTab {...props} />
+        <LayoutTab
+          {...scopedProps}
+          scope={scope}
+          bookSettings={settings}
+          onPageNumberTextChange={(value) =>
+            setPageAppearanceValue(
+              "pageNumberText",
+              value && value !== String(displayedPage(settings, currentPage)) ? value : undefined,
+            )
+          }
+        />
 
         <PageTab {...props} />
       </Tabs>
