@@ -2,6 +2,7 @@ import { Download } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 
 import { BookSetup } from "@/components/book-setup"
+import { BrowsingPageTurnPrototype } from "@/components/browsing-page-turn-prototype"
 import { SelectControl } from "@/components/form-controls"
 import { PageProperties } from "@/components/page-properties"
 import { Preview } from "@/components/preview"
@@ -103,6 +104,8 @@ function AppHeader({
 
 function App() {
   const [settings, setSettings] = useState(initialSettings)
+  const showingPageTurnPrototype =
+    import.meta.env.DEV && new URLSearchParams(window.location.search).get("prototype") === "page-turn"
   const [currentPage, setCurrentPage] = useState(1)
   const [printSettings, setPrintSettings] = useState<{
     settings: Settings
@@ -167,14 +170,22 @@ function App() {
             onSettingsChange={updateSettings}
             onPunchHolePlacementChange={changePunchHolePlacement}
           />
-          <Preview
-            settings={settings}
-            document={document}
-            currentPage={currentPage}
-            onCurrentPageChange={setCurrentPage}
-            previewPunchGuide={previewPunchGuide}
-            onPreviewPunchGuideChange={setPreviewPunchGuide}
-          />
+          {showingPageTurnPrototype ? (
+            <BrowsingPageTurnPrototype
+              currentPage={currentPage}
+              totalPages={document.totalPages}
+              onCurrentPageChange={setCurrentPage}
+            />
+          ) : (
+            <Preview
+              settings={settings}
+              document={document}
+              currentPage={currentPage}
+              onCurrentPageChange={setCurrentPage}
+              previewPunchGuide={previewPunchGuide}
+              onPreviewPunchGuideChange={setPreviewPunchGuide}
+            />
+          )}
           <PageProperties
             settings={settings}
             currentPage={currentPage}
