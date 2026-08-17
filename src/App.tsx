@@ -105,7 +105,8 @@ function AppHeader({
 function App() {
   const [settings, setSettings] = useState(initialSettings)
   const showingPageTurnPrototype =
-    import.meta.env.DEV && new URLSearchParams(window.location.search).get("prototype") === "page-turn"
+    import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).get("prototype") === "page-turn"
   const [currentPage, setCurrentPage] = useState(1)
   const [printSettings, setPrintSettings] = useState<{
     settings: Settings

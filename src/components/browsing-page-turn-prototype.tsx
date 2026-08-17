@@ -1,6 +1,6 @@
 // PROTOTYPE ONLY: a disposable visual probe for issue #9. Do not ship this component.
-import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react"
-import { type CSSProperties, useEffect, useState } from "react"
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight } from "lucide-react"
+import { useEffect, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 
@@ -38,18 +38,10 @@ function readVariant(): Variant {
   return value === "corner" || value === "lift" ? value : "spine"
 }
 
-function PageTurnModel({ variant, turn, opening }: { variant: Variant; turn: Turn; opening: number }) {
+function PageTurnModel({ variant, turn }: { variant: Variant; turn: Turn }) {
   const classes = `page-turn-model page-turn-model--${variant} ${turn ? `is-turning is-turning--${turn}` : ""}`
   return (
-    <div
-      className={classes}
-      style={
-        {
-          "--opening-angle": `${(opening - 58) * 0.28}deg`,
-          "--opening-gap": `${opening / 75}rem`,
-        } as CSSProperties
-      }
-    >
+    <div className={classes}>
       <div className="page-turn-model__shadow" />
       <div className="page-turn-model__spread">
         <div className="page-turn-model__page page-turn-model__page--left">
@@ -86,7 +78,6 @@ export function BrowsingPageTurnPrototype({
   onCurrentPageChange: (page: number) => void
 }) {
   const [variant, setVariant] = useState(readVariant)
-  const [opening, setOpening] = useState(58)
   const [turn, setTurn] = useState<Turn>(null)
   const [status, setStatus] = useState("Choose a nearby page to watch one leaf turn.")
 
@@ -131,15 +122,20 @@ export function BrowsingPageTurnPrototype({
           <p className="prototype-page-turn__eyebrow">Prototype · not V1 code</p>
           <h2>How should one Folded Sheet turn?</h2>
           <p>
-            Compare three motion models. Nearby pages animate one leaf; a distant selection settles
-            directly.
+            Compare three motion models at one default resting spread. Nearby pages animate one
+            leaf; a distant selection settles directly.
           </p>
         </div>
-        <span className="prototype-page-turn__badge">Page {currentPage} of {totalPages}</span>
+        <span className="prototype-page-turn__badge">
+          Page {currentPage} of {totalPages}
+        </span>
       </header>
 
-      <section className="prototype-page-turn__stage" aria-label="Physical Design Preview motion study">
-        <PageTurnModel variant={variant} turn={turn} opening={opening} />
+      <section
+        className="prototype-page-turn__stage"
+        aria-label="Physical Design Preview motion study"
+      >
+        <PageTurnModel variant={variant} turn={turn} />
         <div className="prototype-page-turn__caption">
           <strong>{variants[variant].name}</strong>
           <span>{variants[variant].summary}</span>
@@ -167,17 +163,6 @@ export function BrowsingPageTurnPrototype({
             </Button>
           </div>
         </div>
-        <label className="prototype-page-turn__control-group">
-          <span className="prototype-page-turn__label">Opening · {opening}%</span>
-          <input
-            aria-label="Page Block opening"
-            type="range"
-            min="25"
-            max="85"
-            value={opening}
-            onChange={(event) => setOpening(Number(event.target.value))}
-          />
-        </label>
         <label className="prototype-page-turn__control-group">
           <span className="prototype-page-turn__label">Distant page jump</span>
           <select
@@ -209,17 +194,22 @@ export function BrowsingPageTurnPrototype({
       </aside>
 
       <nav className="prototype-variant-switcher" aria-label="Prototype variants">
-        <button type="button" aria-label="Previous prototype variant" onClick={() => chooseVariant(previousVariant)}>
+        <button
+          type="button"
+          aria-label="Previous prototype variant"
+          onClick={() => chooseVariant(previousVariant)}
+        >
           <ChevronLeft />
         </button>
         <span>
           {variant.toUpperCase()} · {variants[variant].name}
         </span>
-        <button type="button" aria-label="Next prototype variant" onClick={() => chooseVariant(nextVariant)}>
+        <button
+          type="button"
+          aria-label="Next prototype variant"
+          onClick={() => chooseVariant(nextVariant)}
+        >
           <ChevronRight />
-        </button>
-        <button type="button" aria-label="Reset opening" onClick={() => setOpening(58)}>
-          <RotateCcw />
         </button>
       </nav>
     </main>
