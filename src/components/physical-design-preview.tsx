@@ -89,7 +89,7 @@ function addRestingVolume({
   )
   volume.name = `${sheetCount} resting ${sheetCount === 1 ? "sheet" : "sheets"}`
   volume.position.x = side * width * 0.5
-  volume.castShadow = true
+  volume.castShadow = false
   volume.receiveShadow = true
   pivot.add(volume)
   parent.add(pivot)
@@ -115,7 +115,7 @@ function createActivePageMesh(
   const page = new THREE.Mesh(geometry, createPaperMaterial(model, true))
   page.name = side === -1 ? "Active Folded Sheet left surface" : "Active Folded Sheet right surface"
   page.position.x = side * width * 0.5
-  page.castShadow = true
+  page.castShadow = false
   page.receiveShadow = true
   return page
 }
