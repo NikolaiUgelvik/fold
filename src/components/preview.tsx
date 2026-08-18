@@ -12,15 +12,15 @@ import {
   Minus,
   Plus,
 } from "lucide-react"
-import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from "react"
-import * as THREE from "three"
-import WebGL from "three/addons/capabilities/WebGL.js"
+import { type CSSProperties, type ReactNode, useMemo, useState } from "react"
 
 import { PageSvg } from "@/components/notebook-page"
+import { PhysicalDesignPreview } from "@/components/physical-design-preview"
 import { Button } from "@/components/ui/button"
 import type { ImpositionSide } from "@/lib/imposition"
 import { type createNotebookDocument, createPunchGuideViewModel } from "@/lib/notebook-document"
 import { formatMillimeters } from "@/lib/paper"
+import type { MaterialPresetId } from "@/lib/physical-preview"
 import { usesSeparatePunchGuide } from "@/lib/punch-holes"
 import { countPageAppearanceOverrides, resolvePageAppearance, type Settings } from "@/lib/settings"
 
@@ -40,6 +40,10 @@ type PreviewContentProps = PreviewProps & {
   onZoomChange: (zoom: number) => void
   mode: PreviewMode
   onModeChange: (mode: PreviewMode) => void
+  materialPreset: MaterialPresetId
+  onMaterialPresetChange: (preset: MaterialPresetId) => void
+  opening: number
+  onOpeningChange: (opening: number) => void
   showPlan: boolean
   onShowPlanChange: (shown: boolean) => void
   guidePreview: ReturnType<typeof createPunchGuideViewModel<Settings>>
@@ -53,98 +57,6 @@ const pageTypeIcons = {
   blank: { icon: File, label: "blank page" },
   title: { icon: Heading1, label: "title page" },
   index: { icon: List, label: "index page" },
-}
-
-function PhysicalDesignPreview({ currentPage }: { currentPage: number }) {
-  const viewportRef = useRef<HTMLDivElement>(null)
-  const [status, setStatus] = useState<"ready" | "unsupported" | "context-lost">("ready")
-
-  useEffect(() => {
-    const viewport = viewportRef.current
-    if (!viewport) return
-    if (!WebGL.isWebGL2Available()) {
-      setStatus("unsupported")
-      return
-    }
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true })
-    renderer.domElement.className = "absolute inset-0 h-full w-full"
-    renderer.outputColorSpace = THREE.SRGBColorSpace
-    viewport.append(renderer.domElement)
-
-    const scene = new THREE.Scene()
-    scene.background = new THREE.Color("#25231f")
-    const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100)
-    camera.position.set(0, 0, 5)
-    const pageBlock = new THREE.Group()
-    pageBlock.name = "Page Block"
-    scene.add(pageBlock)
-
-    let frame = 0
-    const invalidate = () => {
-      if (frame) return
-      frame = requestAnimationFrame(() => {
-        frame = 0
-        renderer.render(scene, camera)
-      })
-    }
-    const resize = () => {
-      const { width, height } = viewport.getBoundingClientRect()
-      if (!width || !height) return
-      renderer.setPixelRatio(window.devicePixelRatio)
-      renderer.setSize(width, height, false)
-      camera.aspect = width / height
-      camera.updateProjectionMatrix()
-      invalidate()
-    }
-    const onContextLost = (event: Event) => {
-      event.preventDefault()
-      setStatus("context-lost")
-    }
-    const onContextRestored = () => {
-      setStatus("ready")
-      resize()
-    }
-    const resizeObserver = new ResizeObserver(resize)
-
-    renderer.domElement.addEventListener("webglcontextlost", onContextLost)
-    renderer.domElement.addEventListener("webglcontextrestored", onContextRestored)
-    resizeObserver.observe(viewport)
-    resize()
-
-    return () => {
-      cancelAnimationFrame(frame)
-      resizeObserver.disconnect()
-      renderer.domElement.removeEventListener("webglcontextlost", onContextLost)
-      renderer.domElement.removeEventListener("webglcontextrestored", onContextRestored)
-      pageBlock.clear()
-      renderer.dispose()
-      renderer.domElement.remove()
-    }
-  }, [])
-
-  const message =
-    status === "unsupported"
-      ? "Physical Design Preview requires WebGL 2. Use the 2D preview instead."
-      : status === "context-lost"
-        ? "Physical Design Preview lost its graphics context. Switch to 2D preview and try again."
-        : "Page Block rendering starts here."
-
-  return (
-    <div
-      ref={viewportRef}
-      role="img"
-      aria-label={`Physical Design Preview, logical page ${currentPage}`}
-      className="relative flex min-h-0 flex-1 items-end overflow-hidden bg-primary p-5 text-primary-foreground"
-    >
-      <p
-        className="relative z-10 max-w-56 text-caption text-primary-foreground/75"
-        role={status === "ready" ? undefined : "status"}
-      >
-        {message}
-      </p>
-    </div>
-  )
 }
 
 function PageThumbnail({
@@ -310,11 +222,32 @@ function PreviewToolbar(props: PreviewContentProps) {
 }
 
 const PreviewPage = (props: PreviewContentProps) => {
-  const { settings, currentPage, zoom, document, guidePreview, mode } = props
+  const {
+    settings,
+    currentPage,
+    zoom,
+    document,
+    guidePreview,
+    mode,
+    materialPreset,
+    onMaterialPresetChange,
+    opening,
+    onOpeningChange,
+  } = props
   const { punchHoleSets, punchHolePages, pageLayout, pageSize } = document
   const { shown: showPunchGuide, guide: punchGuide, ariaLabel: guideAriaLabel } = guidePreview
   if (mode === "physical") {
-    return <PhysicalDesignPreview currentPage={currentPage} />
+    return (
+      <PhysicalDesignPreview
+        settings={settings}
+        document={document}
+        currentPage={currentPage}
+        materialPreset={materialPreset}
+        opening={opening}
+        onMaterialPresetChange={onMaterialPresetChange}
+        onOpeningChange={onOpeningChange}
+      />
+    )
   }
 
   return (
@@ -454,6 +387,8 @@ function PreviewStrip(props: PreviewContentProps) {
 export function Preview(props: PreviewProps): ReactNode {
   const [zoom, setZoom] = useState(100)
   const [mode, setMode] = useState<PreviewMode>("2d")
+  const [materialPreset, setMaterialPreset] = useState<MaterialPresetId>("everyday")
+  const [opening, setOpening] = useState(65)
   const [showPlan, setShowPlan] = useState(false)
   const contentProps: PreviewContentProps = {
     ...props,
@@ -461,6 +396,10 @@ export function Preview(props: PreviewProps): ReactNode {
     onZoomChange: setZoom,
     mode,
     onModeChange: setMode,
+    materialPreset,
+    onMaterialPresetChange: setMaterialPreset,
+    opening,
+    onOpeningChange: setOpening,
     showPlan,
     onShowPlanChange: setShowPlan,
     guidePreview: createPunchGuideViewModel(props.document, props.previewPunchGuide),
