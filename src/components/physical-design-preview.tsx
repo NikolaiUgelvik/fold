@@ -281,7 +281,6 @@ export function PhysicalDesignPreview({
     renderer.domElement.className = "absolute inset-0 h-full w-full"
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.shadowMap.enabled = true
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap
     viewport.append(renderer.domElement)
 
     const scene = new THREE.Scene()

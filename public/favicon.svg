@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Fold</title>
+  <rect width="64" height="64" rx="12" fill="#25231f"/>
+  <path d="M18 12h28v40H18z" fill="#fffdf7"/>
+  <path d="M23 21h18M23 29h18M23 37h12" stroke="#c9823b" stroke-width="3" stroke-linecap="round"/>
+</svg>
