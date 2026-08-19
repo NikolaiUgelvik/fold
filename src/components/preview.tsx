@@ -12,10 +12,18 @@ import {
   Minus,
   Plus,
 } from "lucide-react"
-import { type CSSProperties, type ReactNode, useMemo, useState } from "react"
+import {
+  type CSSProperties,
+  lazy,
+  memo,
+  type ReactNode,
+  Suspense,
+  useCallback,
+  useMemo,
+  useState,
+} from "react"
 
 import { PageSvg } from "@/components/notebook-page"
-import { PhysicalDesignPreview } from "@/components/physical-design-preview"
 import { Button } from "@/components/ui/button"
 import type { ImpositionSide } from "@/lib/imposition"
 import { type createNotebookDocument, createPunchGuideViewModel } from "@/lib/notebook-document"
@@ -23,6 +31,12 @@ import { formatMillimeters } from "@/lib/paper"
 import type { MaterialPresetId } from "@/lib/physical-preview"
 import { usesSeparatePunchGuide } from "@/lib/punch-holes"
 import { countPageAppearanceOverrides, resolvePageAppearance, type Settings } from "@/lib/settings"
+
+const PhysicalDesignPreview = lazy(() =>
+  import("@/components/physical-design-preview").then(({ PhysicalDesignPreview }) => ({
+    default: PhysicalDesignPreview,
+  })),
+)
 
 type PreviewProps = {
   settings: Settings
@@ -59,18 +73,18 @@ const pageTypeIcons = {
   index: { icon: List, label: "index page" },
 }
 
-function PageThumbnail({
+const PageThumbnail = memo(function PageThumbnail({
   settings,
   logicalPage,
   overrideCount,
   selected,
-  onClick,
+  onSelect,
 }: {
   settings: Settings
   logicalPage: number
   overrideCount: number
   selected: boolean
-  onClick: () => void
+  onSelect: (page: number) => void
 }) {
   const appearance = resolvePageAppearance(settings, logicalPage)
   const pageType = settings.customPages[logicalPage]?.type ?? appearance.pattern
@@ -82,7 +96,7 @@ function PageThumbnail({
       className={`relative flex h-18 w-14 shrink-0 flex-col items-center justify-center gap-1 rounded-sm border bg-card text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring ${selected ? "border-ring text-foreground ring-1 ring-ring" : ""}`}
       aria-label={`Logical page ${logicalPage}, displayed number ${appearance.pageNumberText}, ${label}${overrideCount > 0 ? `, ${overrideCount} appearance ${overrideCount === 1 ? "override" : "overrides"}` : ""}`}
       aria-current={selected ? "page" : undefined}
-      onClick={onClick}
+      onClick={() => onSelect(logicalPage)}
     >
       {overrideCount > 0 && (
         <span
@@ -98,7 +112,7 @@ function PageThumbnail({
       </span>
     </button>
   )
-}
+})
 
 function PreviewToolbar(props: PreviewContentProps) {
   const {
@@ -238,15 +252,26 @@ const PreviewPage = (props: PreviewContentProps) => {
   const { shown: showPunchGuide, guide: punchGuide, ariaLabel: guideAriaLabel } = guidePreview
   if (mode === "physical") {
     return (
-      <PhysicalDesignPreview
-        settings={settings}
-        document={document}
-        currentPage={currentPage}
-        materialPreset={materialPreset}
-        opening={opening}
-        onMaterialPresetChange={onMaterialPresetChange}
-        onOpeningChange={onOpeningChange}
-      />
+      <Suspense
+        fallback={
+          <div
+            className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-primary text-primary-foreground"
+            role="status"
+          >
+            Loading Physical Design Preview…
+          </div>
+        }
+      >
+        <PhysicalDesignPreview
+          settings={settings}
+          document={document}
+          currentPage={currentPage}
+          materialPreset={materialPreset}
+          opening={opening}
+          onMaterialPresetChange={onMaterialPresetChange}
+          onOpeningChange={onOpeningChange}
+        />
+      </Suspense>
     )
   }
 
@@ -312,6 +337,13 @@ function PreviewStrip(props: PreviewContentProps) {
   } = props
   const firstSignature = document.sides.filter((side) => side.signature === 1)
   const pages = Array.from({ length: document.totalPages }, (_, index) => index + 1)
+  const selectPage = useCallback(
+    (page: number) => {
+      onCurrentPageChange(page)
+      onPreviewPunchGuideChange(false)
+    },
+    [onCurrentPageChange, onPreviewPunchGuideChange],
+  )
   const overrideCounts = useMemo(() => {
     const counts: Record<number, number> = {}
     for (const page of Object.keys(settings.pageAppearanceOverrides)) {
@@ -371,10 +403,7 @@ function PreviewStrip(props: PreviewContentProps) {
                 logicalPage={page}
                 overrideCount={overrideCounts[page] ?? 0}
                 selected={!guidePreview.shown && currentPage === page}
-                onClick={() => {
-                  onCurrentPageChange(page)
-                  onPreviewPunchGuideChange(false)
-                }}
+                onSelect={selectPage}
                 key={page}
               />
             ))}

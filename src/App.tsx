@@ -9,7 +9,7 @@ import { PrintDocument } from "@/components/print-document"
 import { Button } from "@/components/ui/button"
 import { ensurePageNumberFontsLoaded } from "@/lib/font-loading"
 import { getPrintPages, type PrintPass } from "@/lib/imposition"
-import { createNotebookDocument } from "@/lib/notebook-document"
+import { createNotebookDocument, createNotebookDocumentKernel } from "@/lib/notebook-document"
 import { type PunchHolePlacement, usesSeparatePunchGuide } from "@/lib/punch-holes"
 import { initialSettings, type Settings, type SettingsUpdate } from "@/lib/settings"
 
@@ -111,7 +111,29 @@ function App() {
   const [printPass, setPrintPass] = useState<PrintPass>("all")
   const [previewPunchGuide, setPreviewPunchGuide] = useState(false)
   const [fontError, setFontError] = useState<string | null>(null)
-  const document = useMemo(() => createNotebookDocument(settings), [settings])
+  const documentKernel = useMemo(
+    () =>
+      createNotebookDocumentKernel({
+        binding: settings.binding,
+        paper: settings.paper,
+        yotsumeOrientation: settings.yotsumeOrientation,
+        yotsumeTwoUp: settings.yotsumeTwoUp,
+        signatures: settings.signatures,
+        sheets: settings.sheets,
+      }),
+    [
+      settings.binding,
+      settings.paper,
+      settings.yotsumeOrientation,
+      settings.yotsumeTwoUp,
+      settings.signatures,
+      settings.sheets,
+    ],
+  )
+  const document = useMemo(
+    () => createNotebookDocument(settings, documentKernel),
+    [settings, documentKernel],
+  )
 
   const updateSettings: SettingsUpdate = (key, value) => {
     setSettings((current) => ({ ...current, [key]: value }))

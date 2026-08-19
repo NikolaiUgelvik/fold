@@ -47,7 +47,12 @@ function createPunchGuide<T extends NotebookDocumentSettings>(
   }
 }
 
-export function createNotebookDocument<T extends NotebookDocumentSettings>(settings: T) {
+export type NotebookDocumentConstructionSettings = Pick<
+  NotebookDocumentSettings,
+  "binding" | "paper" | "yotsumeOrientation" | "yotsumeTwoUp" | "signatures" | "sheets"
+>
+
+export function createNotebookDocumentKernel(settings: NotebookDocumentConstructionSettings) {
   const pageLayout = getPageLayout(
     settings.paper,
     settings.binding,
@@ -60,7 +65,6 @@ export function createNotebookDocument<T extends NotebookDocumentSettings>(setti
     sheetsPerSignature: settings.sheets,
     twoUp: settings.yotsumeTwoUp,
   })
-  const separateGuide = usesSeparatePunchGuide(settings.punchHolePlacement)
   const paper = getPaperSize(settings.paper)
 
   return {
@@ -69,18 +73,29 @@ export function createNotebookDocument<T extends NotebookDocumentSettings>(setti
     sides,
     totalPages: new Set(sides.flatMap((side) => side.pages)).size,
     signatureCount: new Set(sides.map((side) => side.signature)).size,
+    pageName:
+      settings.binding === "yotsume" && !settings.yotsumeTwoUp ? paper.sheetName : paper.pageName,
+  }
+}
+
+export function createNotebookDocument<T extends NotebookDocumentSettings>(
+  settings: T,
+  kernel = createNotebookDocumentKernel(settings),
+) {
+  const separateGuide = usesSeparatePunchGuide(settings.punchHolePlacement)
+
+  return {
+    ...kernel,
     punchHoleSets: getActivePunchHoleSets(
       settings.punchHoleSets,
       isFoldedBinding(settings.binding),
     ) as T["punchHoleSets"],
     punchHolePages: new Set(
-      sides
+      kernel.sides
         .filter((side) => showsPunchHoles(settings.punchHolePlacement, side, settings.sheets))
         .flatMap((side) => side.pages),
     ),
-    pageName:
-      settings.binding === "yotsume" && !settings.yotsumeTwoUp ? paper.sheetName : paper.pageName,
-    guide: separateGuide ? createPunchGuide(settings, sides) : null,
+    guide: separateGuide ? createPunchGuide(settings, kernel.sides) : null,
     guideSides: separateGuide ? 1 : 0,
   }
 }
