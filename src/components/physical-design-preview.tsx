@@ -3,7 +3,13 @@ import * as THREE from "three"
 import WebGL from "three/addons/capabilities/WebGL.js"
 
 import { SelectControl } from "@/components/form-controls"
+import {
+  createPageArtGroup,
+  getSurfaceFontRequests,
+  TextRunAtlas,
+} from "@/components/physical-page-art"
 import type { createNotebookDocument } from "@/lib/notebook-document"
+import { createPageSurface, type PageSurface } from "@/lib/page-surface"
 import {
   createPhysicalPreviewModel,
   type MaterialPresetId,
@@ -22,11 +28,21 @@ const materialPresetOptions = Object.fromEntries(
 )
 
 function disposePageBlock(pageBlock: THREE.Group) {
+  const disposedMaterials = new Set<THREE.Material>()
   pageBlock.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) return
     object.geometry.dispose()
     const materials = Array.isArray(object.material) ? object.material : [object.material]
-    for (const material of materials) material.dispose()
+    for (const material of materials) {
+      if (disposedMaterials.has(material)) continue
+      disposedMaterials.add(material)
+      if (material instanceof THREE.ShaderMaterial) {
+        for (const uniform of Object.values(material.uniforms)) {
+          if (uniform.value instanceof THREE.Texture) uniform.value.dispose()
+        }
+      }
+      material.dispose()
+    }
   })
   pageBlock.clear()
 }
@@ -50,10 +66,10 @@ function createProfiledVolumeGeometry(
   return geometry
 }
 
-function createPaperMaterial(model: PhysicalPreviewModel, active = false) {
+function createPaperMaterial(model: PhysicalPreviewModel, active = false, paperColor = "#fffef9") {
   const { materialPreset } = model
   return new THREE.MeshPhysicalMaterial({
-    color: active ? "#fffef9" : "#e9e3d5",
+    color: active ? paperColor : "#e9e3d5",
     roughness: 0.78 - materialPreset.stiffness * 0.25,
     transmission: materialPreset.translucency * 0.2,
     thickness: 0.01,
@@ -109,11 +125,20 @@ function addRestingVolume({
   parent.add(pivot)
 }
 
+type PageArtLayer = {
+  surface: PageSurface
+  renderSide: THREE.Side
+}
+
 function createActivePageMesh(
   width: number,
   height: number,
   model: PhysicalPreviewModel,
   side: -1 | 1,
+  layers: PageArtLayer[],
+  atlas: TextRunAtlas,
+  includeText: boolean,
+  paperColor: string,
 ) {
   const geometry = new THREE.PlaneGeometry(width, height, 32, 2)
   const positions = geometry.getAttribute("position")
@@ -126,7 +151,7 @@ function createActivePageMesh(
   positions.needsUpdate = true
   geometry.computeVertexNormals()
 
-  const page = new THREE.Mesh(geometry, createPaperMaterial(model, true))
+  const page = new THREE.Mesh(geometry, createPaperMaterial(model, true, paperColor))
   page.name = side === -1 ? "Active Folded Sheet left surface" : "Active Folded Sheet right surface"
   page.position.x = side * width * 0.5
   page.castShadow = false
@@ -135,17 +160,53 @@ function createActivePageMesh(
   // ponytail: foreground the selected sheet until camera orbit can resolve stack occlusion.
   page.material.depthTest = false
   page.material.depthWrite = false
+
+  const millimetersToWorld = height / layers[0].surface.metrics.pageSize.height
+  for (const layer of layers) {
+    const flipX =
+      side === 1
+        ? layer.surface.metrics.bindingEdge === "right"
+        : layer.surface.metrics.bindingEdge === "left"
+    page.add(
+      createPageArtGroup({
+        surface: layer.surface,
+        geometry,
+        millimetersToWorld,
+        flipX,
+        renderSide: layer.renderSide,
+        atlas,
+        includeText,
+      }),
+    )
+  }
   return page
+}
+
+type ActivePageSurfaces = {
+  selected: PageSurface
+  facing: PageSurface
+  left: PageSurface
+  right: PageSurface
+}
+
+function getPageDimensions(model: PhysicalPreviewModel) {
+  const { width, height } = model.pageSize
+  return {
+    width: PAGE_HEIGHT * (width / height),
+    millimetersToWorld: PAGE_HEIGHT / height,
+  }
 }
 
 function createPageBlock(
   model: PhysicalPreviewModel,
   pageBlock: THREE.Group,
   openingPivots: OpeningPivot[],
+  surfaces: ActivePageSurfaces,
+  atlas: TextRunAtlas,
+  includeText: boolean,
+  paperColor: string,
 ) {
-  const { width: pageWidthMillimeters, height: pageHeightMillimeters } = model.pageSize
-  const width = PAGE_HEIGHT * (pageWidthMillimeters / pageHeightMillimeters)
-  const millimetersToWorld = PAGE_HEIGHT / pageHeightMillimeters
+  const { width, millimetersToWorld } = getPageDimensions(model)
   const sheetDepth = model.materialPreset.thickness * millimetersToWorld
   const signatureGap = model.materialPreset.signatureGap * millimetersToWorld
   const leftRotation = (openingDegrees: number) =>
@@ -197,11 +258,33 @@ function createPageBlock(
       const leftPivot = new THREE.Group()
       leftPivot.rotation.y = leftRotation(model.openingDegrees)
       openingPivots.push({ object: leftPivot, rotation: leftRotation })
-      leftPivot.add(createActivePageMesh(width, PAGE_HEIGHT, model, -1))
+      leftPivot.add(
+        createActivePageMesh(
+          width,
+          PAGE_HEIGHT,
+          model,
+          -1,
+          [{ surface: surfaces.left, renderSide: THREE.FrontSide }],
+          atlas,
+          includeText,
+          paperColor,
+        ),
+      )
       const rightPivot = new THREE.Group()
       rightPivot.rotation.y = rightRotation(model.openingDegrees)
       openingPivots.push({ object: rightPivot, rotation: rightRotation })
-      rightPivot.add(createActivePageMesh(width, PAGE_HEIGHT, model, 1))
+      rightPivot.add(
+        createActivePageMesh(
+          width,
+          PAGE_HEIGHT,
+          model,
+          1,
+          [{ surface: surfaces.right, renderSide: THREE.FrontSide }],
+          atlas,
+          includeText,
+          paperColor,
+        ),
+      )
       activeSheet.add(leftPivot, rightPivot)
       pageBlock.add(activeSheet)
     }
@@ -212,10 +295,12 @@ function createLeafStack(
   model: PhysicalPreviewModel,
   pageBlock: THREE.Group,
   openingPivots: OpeningPivot[],
+  surfaces: ActivePageSurfaces,
+  atlas: TextRunAtlas,
+  includeText: boolean,
+  paperColor: string,
 ) {
-  const { width: pageWidthMillimeters, height: pageHeightMillimeters } = model.pageSize
-  const width = PAGE_HEIGHT * (pageWidthMillimeters / pageHeightMillimeters)
-  const millimetersToWorld = PAGE_HEIGHT / pageHeightMillimeters
+  const { width, millimetersToWorld } = getPageDimensions(model)
   const direction = model.bindingEdge === "left" ? 1 : -1
   const fan = (openingDegrees: number) => THREE.MathUtils.degToRad(openingDegrees)
   const depthPerLeaf = model.materialPreset.thickness * millimetersToWorld
@@ -253,7 +338,25 @@ function createLeafStack(
     (model.activeUnitIndex / Math.max(1, model.units.length - 1) - 0.5)
   activeLeaf.rotation.y = activeLeafRotation(model.openingDegrees)
   openingPivots.push({ object: activeLeaf, rotation: activeLeafRotation })
-  activeLeaf.add(createActivePageMesh(width, PAGE_HEIGHT, model, direction))
+  const [front, back] =
+    model.selectedSurface.side === "front"
+      ? [surfaces.selected, surfaces.facing]
+      : [surfaces.facing, surfaces.selected]
+  activeLeaf.add(
+    createActivePageMesh(
+      width,
+      PAGE_HEIGHT,
+      model,
+      direction,
+      [
+        { surface: front, renderSide: THREE.FrontSide },
+        { surface: back, renderSide: THREE.BackSide },
+      ],
+      atlas,
+      includeText,
+      paperColor,
+    ),
+  )
   pageBlock.add(activeLeaf)
 }
 
@@ -261,20 +364,78 @@ function replacePageBlock(
   pageBlock: THREE.Group,
   model: PhysicalPreviewModel,
   openingPivots: OpeningPivot[],
+  surfaces: ActivePageSurfaces,
+  atlas: TextRunAtlas,
+  includeText: boolean,
+  paperColor: string,
 ) {
   disposePageBlock(pageBlock)
   openingPivots.length = 0
-  if (model.construction === "page-block") createPageBlock(model, pageBlock, openingPivots)
-  else createLeafStack(model, pageBlock, openingPivots)
+  atlas.prepare(includeText ? [surfaces.selected, surfaces.facing] : [])
+  if (model.construction === "page-block") {
+    createPageBlock(model, pageBlock, openingPivots, surfaces, atlas, includeText, paperColor)
+  } else {
+    createLeafStack(model, pageBlock, openingPivots, surfaces, atlas, includeText, paperColor)
+  }
 }
 
 type RendererState = {
   pageBlock: THREE.Group
   openingPivots: OpeningPivot[]
+  textAtlas: TextRunAtlas
   updateOpening: (openingDegrees: number) => void
   refit: (openingRange?: readonly [number, number]) => void
 }
 
+function useActivePageSurfaces(
+  settings: Settings,
+  selectedSurface: PhysicalPreviewModel["selectedSurface"],
+  punchHoleSets: Settings["punchHoleSets"],
+  punchHolePages: Set<number>,
+) {
+  return useMemo<ActivePageSurfaces>(() => {
+    const selected = createPageSurface(
+      settings,
+      selectedSurface.logicalPage,
+      punchHoleSets,
+      punchHolePages.has(selectedSurface.logicalPage),
+    )
+    const facing = createPageSurface(
+      settings,
+      selectedSurface.facingLogicalPage,
+      punchHoleSets,
+      punchHolePages.has(selectedSurface.facingLogicalPage),
+    )
+    const [left, right] =
+      selected.metrics.bindingEdge === "right" ? [selected, facing] : [facing, selected]
+    return { selected, facing, left, right }
+  }, [punchHolePages, punchHoleSets, selectedSurface, settings])
+}
+
+function useSurfaceTextReady(activeSurfaces: ActivePageSurfaces) {
+  const surfaceKey = useMemo(() => JSON.stringify(activeSurfaces), [activeSurfaces])
+  const [readySurfaceKey, setReadySurfaceKey] = useState("")
+  useEffect(() => {
+    let cancelled = false
+    setReadySurfaceKey("")
+    const fonts = globalThis.document.fonts
+    const requests = getSurfaceFontRequests([activeSurfaces.selected, activeSurfaces.facing])
+    void fonts.ready
+      .then(() =>
+        Promise.all([...requests].map(([font, text]) => fonts.load(font, [...text].join("")))),
+      )
+      .catch(() => undefined)
+      .then(() => {
+        if (!cancelled) setReadySurfaceKey(surfaceKey)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [activeSurfaces, surfaceKey])
+  return readySurfaceKey === surfaceKey
+}
+
+// fallow-ignore-next-line complexity -- Direct Three.js lifecycle and preview controls share this boundary.
 export function PhysicalDesignPreview({
   settings,
   document,
@@ -315,6 +476,13 @@ export function PhysicalDesignPreview({
       settings.bindingEdge,
     ],
   )
+  const activeSurfaces = useActivePageSurfaces(
+    settings,
+    model.selectedSurface,
+    document.punchHoleSets,
+    document.punchHolePages,
+  )
+  const includeText = useSurfaceTextReady(activeSurfaces)
   const openingDegrees = resolveOpeningDegrees(settings.binding, materialPreset, opening)
   const openingDegreesRef = useRef(openingDegrees)
   openingDegreesRef.current = openingDegrees
@@ -354,6 +522,7 @@ export function PhysicalDesignPreview({
       })
     }
     const openingPivots: OpeningPivot[] = []
+    const textAtlas = new TextRunAtlas()
     let fitOpeningRange: readonly [number, number] | undefined
     const applyOpening = (degrees: number) => {
       for (const pivot of openingPivots) pivot.object.rotation.y = pivot.rotation(degrees)
@@ -410,7 +579,7 @@ export function PhysicalDesignPreview({
     }
     const resizeObserver = new ResizeObserver(resize)
 
-    rendererStateRef.current = { pageBlock, openingPivots, updateOpening, refit }
+    rendererStateRef.current = { pageBlock, openingPivots, textAtlas, updateOpening, refit }
     renderer.domElement.addEventListener("webglcontextlost", onContextLost)
     renderer.domElement.addEventListener("webglcontextrestored", onContextRestored)
     resizeObserver.observe(viewport)
@@ -423,6 +592,7 @@ export function PhysicalDesignPreview({
       renderer.domElement.removeEventListener("webglcontextlost", onContextLost)
       renderer.domElement.removeEventListener("webglcontextrestored", onContextRestored)
       disposePageBlock(pageBlock)
+      textAtlas.dispose()
       renderer.dispose()
       renderer.domElement.remove()
     }
@@ -431,13 +601,28 @@ export function PhysicalDesignPreview({
   useEffect(() => {
     const rendererState = rendererStateRef.current
     if (!rendererState) return
-    replacePageBlock(rendererState.pageBlock, model, rendererState.openingPivots)
+    replacePageBlock(
+      rendererState.pageBlock,
+      model,
+      rendererState.openingPivots,
+      activeSurfaces,
+      rendererState.textAtlas,
+      includeText,
+      settings.previewPaperColor,
+    )
     rendererState.updateOpening(openingDegreesRef.current)
     rendererState.refit([
       resolveOpeningDegrees(settings.binding, materialPreset, 0),
       resolveOpeningDegrees(settings.binding, materialPreset, 100),
     ])
-  }, [model, materialPreset, settings.binding])
+  }, [
+    activeSurfaces,
+    materialPreset,
+    model,
+    settings.binding,
+    settings.previewPaperColor,
+    includeText,
+  ])
 
   useEffect(() => {
     const rendererState = rendererStateRef.current

@@ -1,134 +1,8 @@
 import { useId } from "react"
 
-import { parseIndexEntries } from "@/lib/custom-pages"
-import { isFoldedBinding } from "@/lib/imposition"
-import { getPageLayout } from "@/lib/page-layout"
-import { displayedPage, getOuterPageNumberEdge } from "@/lib/page-numbering"
-import { getCenteredPatternBounds } from "@/lib/paper"
-import {
-  type BindingEdge,
-  getPageBindingEdge,
-  getPunchHoles,
-  type HoleSet,
-} from "@/lib/punch-holes"
-import { type ResolvedPageAppearance, resolvePageAppearance, type Settings } from "@/lib/settings"
-
-function getPatternBasics(settings: Settings) {
-  const spacing = settings.pattern === "dots" ? settings.dotSpacing : settings.lineSpacing
-  const majorEvery =
-    settings.pattern === "graph" ? settings.graphMajorEvery : settings.dotMajorEvery
-  const majorSpacing = spacing * majorEvery
-  const majorLineWidth = settings.pattern === "graph" ? settings.graphMajorLineWidth : 0
-  const patternRadius =
-    settings.pattern === "dots"
-      ? settings.dotSize / 2
-      : Math.max(settings.lineWidth, majorLineWidth) / 2
-  const boundsSpacing =
-    settings.pattern === "graph" && settings.graphCompleteBlocks ? majorSpacing : spacing
-  return { spacing, majorSpacing, patternRadius, boundsSpacing }
-}
-
-function getPageMargins(settings: Settings, bindingEdge: BindingEdge) {
-  return {
-    top: settings.margin,
-    right: settings.margin + (bindingEdge === "right" ? settings.gutterMargin : 0),
-    bottom: settings.margin,
-    left: settings.margin + (bindingEdge === "left" ? settings.gutterMargin : 0),
-  }
-}
-
-function getMajorBounds(
-  settings: Settings,
-  patternStartX: number,
-  patternStartY: number,
-  centeredPatternBounds: ReturnType<typeof getCenteredPatternBounds>,
-  patternRadius: number,
-  majorSpacing: number,
-  patternBounds: ReturnType<typeof getCenteredPatternBounds>,
-) {
-  if (settings.dotMajorEvery <= 0) return patternBounds
-  const majorRadius = settings.dotMajorSize / 2
-  return {
-    x: patternStartX - majorRadius,
-    y: patternStartY - majorRadius,
-    width:
-      Math.floor((centeredPatternBounds.width - patternRadius * 2) / majorSpacing) * majorSpacing +
-      majorRadius * 2,
-    height:
-      Math.floor((centeredPatternBounds.height - patternRadius * 2) / majorSpacing) * majorSpacing +
-      majorRadius * 2,
-  }
-}
-
-function getPageMetrics(settings: Settings, logicalPage: number) {
-  const pageSize = getPageLayout(
-    settings.paper,
-    settings.binding,
-    settings.yotsumeOrientation,
-    settings.yotsumeTwoUp,
-  ).page
-  const numberEdge = getOuterPageNumberEdge(displayedPage(settings, logicalPage))
-  const customPage = settings.customPages[logicalPage]
-  const indexEntries =
-    customPage?.type === "index"
-      ? parseIndexEntries(customPage.entries).slice(0, Math.floor((pageSize.height - 50) / 9))
-      : []
-  const { spacing, majorSpacing, patternRadius, boundsSpacing } = getPatternBasics(settings)
-  const folded = isFoldedBinding(settings.binding)
-  const bindingEdge = getPageBindingEdge(settings.bindingEdge, logicalPage, folded)
-  const pageMargins = getPageMargins(settings, bindingEdge)
-  const contentWidth = Math.max(0, pageSize.width - pageMargins.left - pageMargins.right)
-  const contentCenterX = pageMargins.left + contentWidth / 2
-  const centeredPatternBounds = getCenteredPatternBounds(
-    pageSize,
-    pageMargins,
-    boundsSpacing,
-    patternRadius,
-  )
-  const patternStartX = centeredPatternBounds.x + patternRadius
-  const patternStartY = centeredPatternBounds.y + patternRadius
-  const patternBounds =
-    settings.pattern === "lines"
-      ? { ...centeredPatternBounds, x: pageMargins.left, width: contentWidth }
-      : centeredPatternBounds
-  const majorRadius = settings.dotMajorSize / 2
-  const majorBounds = getMajorBounds(
-    settings,
-    patternStartX,
-    patternStartY,
-    centeredPatternBounds,
-    patternRadius,
-    majorSpacing,
-    patternBounds,
-  )
-  const borderX = pageMargins.left + settings.borderWidth / 2
-  const borderY = pageMargins.top + settings.borderWidth / 2
-  return {
-    pageSize,
-    numberEdge,
-    customPage,
-    indexEntries,
-    spacing,
-    majorSpacing,
-    patternRadius,
-    boundsSpacing,
-    folded,
-    bindingEdge,
-    pageMargins,
-    contentWidth,
-    contentCenterX,
-    centeredPatternBounds,
-    patternStartX,
-    patternStartY,
-    patternBounds,
-    majorRadius,
-    majorBounds,
-    borderX,
-    borderY,
-  }
-}
-
-type PageMetrics = ReturnType<typeof getPageMetrics>
+import { createPageSurface, getPageNumberAlignment, type PageMetrics } from "@/lib/page-surface"
+import type { HoleSet } from "@/lib/punch-holes"
+import type { ResolvedPageAppearance, Settings } from "@/lib/settings"
 
 function BasePattern({
   settings,
@@ -348,14 +222,6 @@ function CustomPageLayer({ metrics }: { metrics: PageMetrics }) {
   )
 }
 
-function getPageNumberAlignment(settings: Settings, metrics: PageMetrics) {
-  if (settings.numberPosition === "center")
-    return { x: metrics.pageSize.width / 2, anchor: "middle" as const }
-  if (metrics.numberEdge === "right")
-    return { x: metrics.pageSize.width - 9, anchor: "end" as const }
-  return { x: 9, anchor: "start" as const }
-}
-
 function PageNumber({
   settings,
   metrics,
@@ -402,18 +268,10 @@ export function PageSvg({
   className?: string
   ariaLabel?: string
 }) {
-  const pageSettings = resolvePageAppearance(settings, logicalPage)
-  const metrics = getPageMetrics(pageSettings, logicalPage)
+  const surface = createPageSurface(settings, logicalPage, punchHoleSets, showPunchHoles)
+  const { appearance: pageSettings, metrics, punchHoles } = surface
   const patternId = useId()
   const majorPatternId = useId()
-  const punchHoles = getPunchHoles(
-    metrics.pageSize,
-    settings.bindingEdge,
-    logicalPage,
-    settings.punchHoleEndInset,
-    punchHoleSets,
-    metrics.folded,
-  )
 
   return (
     <svg
@@ -432,7 +290,7 @@ export function PageSvg({
       />
       <PageBorder settings={pageSettings} metrics={metrics} />
       <CustomPageLayer metrics={metrics} />
-      {showPunchHoles && (
+      {punchHoles.length > 0 && (
         <g fill="none" stroke="#30302c" strokeWidth="0.25">
           {punchHoles.map((hole) => (
             <circle
