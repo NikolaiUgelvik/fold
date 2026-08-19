@@ -4,7 +4,7 @@ import type { PageSurface, PageTextRun } from "@/lib/page-surface"
 
 const ATLAS_SIZE = 2048
 const ATLAS_PIXELS_PER_MILLIMETER = 8
-const ATLAS_TILE_GUARD = 32
+const ATLAS_TILE_GUARD = 8
 
 const vertexShader = `
 out vec2 vUv;
@@ -394,9 +394,9 @@ export class TextRunAtlas {
     this.context = context
     this.texture = new THREE.CanvasTexture(this.canvas)
     this.texture.colorSpace = THREE.SRGBColorSpace
-    this.texture.minFilter = THREE.LinearMipmapLinearFilter
+    this.texture.minFilter = THREE.LinearFilter
     this.texture.magFilter = THREE.LinearFilter
-    this.texture.generateMipmaps = true
+    this.texture.generateMipmaps = false
   }
 
   prepare(surfaces: PageSurface[]) {
