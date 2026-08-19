@@ -394,9 +394,9 @@ export class TextRunAtlas {
     this.context = context
     this.texture = new THREE.CanvasTexture(this.canvas)
     this.texture.colorSpace = THREE.SRGBColorSpace
-    this.texture.minFilter = THREE.LinearFilter
+    this.texture.minFilter = THREE.LinearMipmapLinearFilter
     this.texture.magFilter = THREE.LinearFilter
-    this.texture.generateMipmaps = false
+    this.texture.generateMipmaps = true
   }
 
   prepare(surfaces: PageSurface[]) {

@@ -29,6 +29,7 @@ function createPreview({
   signatures,
   logicalPage,
   materialPreset,
+  sheets = 2,
   twoUp = false,
 }: {
   binding: Binding
@@ -36,12 +37,13 @@ function createPreview({
   signatures: number
   logicalPage: number
   materialPreset: MaterialPresetId
+  sheets?: number
   twoUp?: boolean
 }) {
   return createPhysicalPreviewModel({
     binding,
     bindingEdge,
-    sides: createImposition({ binding, signatures, sheetsPerSignature: 2, twoUp }),
+    sides: createImposition({ binding, signatures, sheetsPerSignature: sheets, twoUp }),
     pageSize: { width: 148.5, height: 210 },
     logicalPage,
     materialPreset,
@@ -70,6 +72,31 @@ test("resolves a coptic logical page through its imposed Folded Sheet", () => {
     },
     activeUnitIndex: 1,
     restingCounts: { left: 1, right: 2 },
+  })
+})
+
+test("keeps page five beside its imposed facing page", () => {
+  const preview = createPreview({
+    binding: "coptic",
+    bindingEdge: "left",
+    signatures: 4,
+    sheets: 4,
+    logicalPage: 5,
+    materialPreset: "everyday",
+  })
+
+  assertPreview(preview, {
+    construction: "page-block",
+    selectedSurface: {
+      logicalPage: 5,
+      signature: 1,
+      sheet: 3,
+      side: "front",
+      position: 1,
+      facingLogicalPage: 12,
+    },
+    activeUnitIndex: 2,
+    restingCounts: { left: 2, right: 13 },
   })
 })
 
