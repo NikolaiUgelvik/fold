@@ -5,6 +5,7 @@ import type { PageSurface, PageTextRun } from "@/lib/page-surface"
 const ATLAS_SIZE = 2048
 const ATLAS_PIXELS_PER_MILLIMETER = 8
 const ATLAS_TILE_GUARD = 8
+const ATLAS_TEXT_INSET = 2
 
 const vertexShader = `
 out vec2 vUv;
@@ -360,8 +361,9 @@ function createTextTile(run: PageTextRun): TextTile | null {
   const contentWidth = Math.max(1, Math.ceil(measurement.width))
   const ascent = Math.max(1, Math.ceil(measurement.actualBoundingBoxAscent || run.fontSize))
   const descent = Math.max(1, Math.ceil(measurement.actualBoundingBoxDescent || run.fontSize * 0.3))
-  const width = contentWidth + ATLAS_TILE_GUARD * 2
-  const height = ascent + descent + ATLAS_TILE_GUARD * 2
+  const edgePadding = ATLAS_TILE_GUARD + ATLAS_TEXT_INSET
+  const width = contentWidth + edgePadding * 2
+  const height = ascent + descent + edgePadding * 2
   if (width > ATLAS_SIZE || height > ATLAS_SIZE) return null
 
   const canvas = document.createElement("canvas")
@@ -372,7 +374,7 @@ function createTextTile(run: PageTextRun): TextTile | null {
   context.font = fontFor(run)
   context.fillStyle = run.color
   context.textBaseline = "alphabetic"
-  context.fillText(run.text, ATLAS_TILE_GUARD, ATLAS_TILE_GUARD + ascent)
+  context.fillText(run.text, edgePadding, edgePadding + ascent)
   extrudeTileEdges(context, width, height)
   return { canvas, width, height, contentWidth, ascent }
 }
@@ -445,7 +447,7 @@ export class TextRunAtlas {
     const textLeft =
       run.x -
       (run.anchor === "middle" ? textWidth / 2 : run.anchor === "end" ? textWidth : 0) -
-      ATLAS_TILE_GUARD / ATLAS_PIXELS_PER_MILLIMETER
+      (ATLAS_TILE_GUARD + ATLAS_TEXT_INSET) / ATLAS_PIXELS_PER_MILLIMETER
     this.entries.set(key, {
       x: placement.x,
       y: placement.y,
@@ -455,7 +457,7 @@ export class TextRunAtlas {
       pageY:
         run.y -
         tile.ascent / ATLAS_PIXELS_PER_MILLIMETER -
-        ATLAS_TILE_GUARD / ATLAS_PIXELS_PER_MILLIMETER,
+        (ATLAS_TILE_GUARD + ATLAS_TEXT_INSET) / ATLAS_PIXELS_PER_MILLIMETER,
     })
   }
 }
