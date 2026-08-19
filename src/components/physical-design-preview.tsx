@@ -9,6 +9,7 @@ import {
   type MaterialPresetId,
   materialPresets,
   type PhysicalPreviewModel,
+  resolveOpeningDegrees,
 } from "@/lib/physical-preview"
 import type { Settings } from "@/lib/settings"
 
@@ -60,6 +61,11 @@ function createPaperMaterial(model: PhysicalPreviewModel, active = false) {
   })
 }
 
+type OpeningPivot = {
+  object: THREE.Object3D
+  rotation: (openingDegrees: number) => number
+}
+
 function addRestingVolume({
   parent,
   side,
@@ -68,6 +74,7 @@ function addRestingVolume({
   height,
   depthPerSheet,
   model,
+  openingPivots,
   rotation,
 }: {
   parent: THREE.Group
@@ -77,11 +84,13 @@ function addRestingVolume({
   height: number
   depthPerSheet: number
   model: PhysicalPreviewModel
-  rotation: number
+  openingPivots: OpeningPivot[]
+  rotation: (openingDegrees: number) => number
 }) {
   if (sheetCount === 0) return
   const pivot = new THREE.Group()
-  pivot.rotation.y = rotation
+  pivot.rotation.y = rotation(model.openingDegrees)
+  openingPivots.push({ object: pivot, rotation })
   const depth = Math.max(0.012, sheetCount * depthPerSheet)
   const volume = new THREE.Mesh(
     createProfiledVolumeGeometry(width, height, depth, model.materialPreset.profile),
@@ -120,13 +129,19 @@ function createActivePageMesh(
   return page
 }
 
-function createPageBlock(model: PhysicalPreviewModel, pageBlock: THREE.Group) {
+function createPageBlock(
+  model: PhysicalPreviewModel,
+  pageBlock: THREE.Group,
+  openingPivots: OpeningPivot[],
+) {
   const { width: pageWidthMillimeters, height: pageHeightMillimeters } = model.pageSize
   const width = PAGE_HEIGHT * (pageWidthMillimeters / pageHeightMillimeters)
   const millimetersToWorld = PAGE_HEIGHT / pageHeightMillimeters
   const sheetDepth = model.materialPreset.thickness * millimetersToWorld
   const signatureGap = model.materialPreset.signatureGap * millimetersToWorld
-  const spreadTilt = THREE.MathUtils.degToRad(180 - model.openingDegrees) / 2
+  const leftRotation = (openingDegrees: number) =>
+    THREE.MathUtils.degToRad(180 - openingDegrees) / 2
+  const rightRotation = (openingDegrees: number) => -leftRotation(openingDegrees)
   const signatures = [...new Set(model.units.map((unit) => unit.signature))]
   const activeSignature = model.units[model.activeUnitIndex].signature
 
@@ -149,7 +164,8 @@ function createPageBlock(model: PhysicalPreviewModel, pageBlock: THREE.Group) {
       height: PAGE_HEIGHT,
       depthPerSheet: sheetDepth,
       model,
-      rotation: spreadTilt,
+      openingPivots,
+      rotation: leftRotation,
     })
     addRestingVolume({
       parent: signatureGroup,
@@ -159,7 +175,8 @@ function createPageBlock(model: PhysicalPreviewModel, pageBlock: THREE.Group) {
       height: PAGE_HEIGHT,
       depthPerSheet: sheetDepth,
       model,
-      rotation: -spreadTilt,
+      openingPivots,
+      rotation: rightRotation,
     })
 
     if (signature === activeSignature) {
@@ -169,10 +186,12 @@ function createPageBlock(model: PhysicalPreviewModel, pageBlock: THREE.Group) {
       activeSheet.userData.selectedSurface = model.selectedSurface
       activeSheet.rotation.y = 0
       const leftPivot = new THREE.Group()
-      leftPivot.rotation.y = spreadTilt
+      leftPivot.rotation.y = leftRotation(model.openingDegrees)
+      openingPivots.push({ object: leftPivot, rotation: leftRotation })
       leftPivot.add(createActivePageMesh(width, PAGE_HEIGHT, model, -1))
       const rightPivot = new THREE.Group()
-      rightPivot.rotation.y = -spreadTilt
+      rightPivot.rotation.y = rightRotation(model.openingDegrees)
+      openingPivots.push({ object: rightPivot, rotation: rightRotation })
       rightPivot.add(createActivePageMesh(width, PAGE_HEIGHT, model, 1))
       activeSheet.add(leftPivot, rightPivot)
       pageBlock.add(activeSheet)
@@ -180,12 +199,16 @@ function createPageBlock(model: PhysicalPreviewModel, pageBlock: THREE.Group) {
   }
 }
 
-function createLeafStack(model: PhysicalPreviewModel, pageBlock: THREE.Group) {
+function createLeafStack(
+  model: PhysicalPreviewModel,
+  pageBlock: THREE.Group,
+  openingPivots: OpeningPivot[],
+) {
   const { width: pageWidthMillimeters, height: pageHeightMillimeters } = model.pageSize
   const width = PAGE_HEIGHT * (pageWidthMillimeters / pageHeightMillimeters)
   const millimetersToWorld = PAGE_HEIGHT / pageHeightMillimeters
   const direction = model.bindingEdge === "left" ? 1 : -1
-  const fan = THREE.MathUtils.degToRad(model.openingDegrees)
+  const fan = (openingDegrees: number) => THREE.MathUtils.degToRad(openingDegrees)
   const depthPerLeaf = model.materialPreset.thickness * millimetersToWorld
   const { left, right } = model.restingCounts
 
@@ -197,7 +220,8 @@ function createLeafStack(model: PhysicalPreviewModel, pageBlock: THREE.Group) {
     height: PAGE_HEIGHT,
     depthPerSheet: depthPerLeaf,
     model,
-    rotation: -direction * fan * 0.5,
+    openingPivots,
+    rotation: (openingDegrees) => -direction * fan(openingDegrees) * 0.5,
   })
   addRestingVolume({
     parent: pageBlock,
@@ -207,25 +231,46 @@ function createLeafStack(model: PhysicalPreviewModel, pageBlock: THREE.Group) {
     height: PAGE_HEIGHT,
     depthPerSheet: depthPerLeaf,
     model,
-    rotation: direction * fan * 0.5,
+    openingPivots,
+    rotation: (openingDegrees) => direction * fan(openingDegrees) * 0.5,
   })
 
   const activeLeaf = new THREE.Group()
   activeLeaf.name = `Active Leaf ${model.activeUnitIndex + 1}`
   activeLeaf.userData.selectedSurface = model.selectedSurface
-  activeLeaf.rotation.y =
-    direction * fan * (model.activeUnitIndex / Math.max(1, model.units.length - 1) - 0.5)
+  const activeLeafRotation = (openingDegrees: number) =>
+    direction *
+    fan(openingDegrees) *
+    (model.activeUnitIndex / Math.max(1, model.units.length - 1) - 0.5)
+  activeLeaf.rotation.y = activeLeafRotation(model.openingDegrees)
+  openingPivots.push({ object: activeLeaf, rotation: activeLeafRotation })
   activeLeaf.add(createActivePageMesh(width, PAGE_HEIGHT, model, direction))
   pageBlock.add(activeLeaf)
 }
 
-function replacePageBlock(pageBlock: THREE.Group, model: PhysicalPreviewModel) {
+function replacePageBlock(
+  pageBlock: THREE.Group,
+  model: PhysicalPreviewModel,
+  openingPivots: OpeningPivot[],
+) {
   disposePageBlock(pageBlock)
-  if (model.construction === "page-block") createPageBlock(model, pageBlock)
-  else createLeafStack(model, pageBlock)
+  openingPivots.length = 0
+  if (model.construction === "page-block") createPageBlock(model, pageBlock, openingPivots)
+  else createLeafStack(model, pageBlock, openingPivots)
 }
 
-type RendererState = { pageBlock: THREE.Group; invalidate: () => void }
+type RendererState = {
+  pageBlock: THREE.Group
+  openingPivots: OpeningPivot[]
+  invalidate: () => void
+}
+
+function updateOpening(rendererState: RendererState, openingDegrees: number) {
+  for (const pivot of rendererState.openingPivots) {
+    pivot.object.rotation.y = pivot.rotation(openingDegrees)
+  }
+  rendererState.invalidate()
+}
 
 export function PhysicalDesignPreview({
   settings,
@@ -256,18 +301,20 @@ export function PhysicalDesignPreview({
         pageSize: document.pageSize,
         logicalPage: currentPage,
         materialPreset,
-        opening,
+        opening: 0,
       }),
     [
       currentPage,
       document.pageSize,
       document.sides,
       materialPreset,
-      opening,
       settings.binding,
       settings.bindingEdge,
     ],
   )
+  const openingDegrees = resolveOpeningDegrees(settings.binding, materialPreset, opening)
+  const openingDegreesRef = useRef(openingDegrees)
+  openingDegreesRef.current = openingDegrees
 
   useEffect(() => {
     const viewport = viewportRef.current
@@ -324,7 +371,7 @@ export function PhysicalDesignPreview({
     }
     const resizeObserver = new ResizeObserver(resize)
 
-    rendererStateRef.current = { pageBlock, invalidate }
+    rendererStateRef.current = { pageBlock, openingPivots: [], invalidate }
     renderer.domElement.addEventListener("webglcontextlost", onContextLost)
     renderer.domElement.addEventListener("webglcontextrestored", onContextRestored)
     resizeObserver.observe(viewport)
@@ -345,9 +392,15 @@ export function PhysicalDesignPreview({
   useEffect(() => {
     const rendererState = rendererStateRef.current
     if (!rendererState) return
-    replacePageBlock(rendererState.pageBlock, model)
-    rendererState.invalidate()
+    replacePageBlock(rendererState.pageBlock, model, rendererState.openingPivots)
+    updateOpening(rendererState, openingDegreesRef.current)
   }, [model])
+
+  useEffect(() => {
+    const rendererState = rendererStateRef.current
+    if (!rendererState) return
+    updateOpening(rendererState, openingDegrees)
+  }, [openingDegrees])
 
   return (
     <section
