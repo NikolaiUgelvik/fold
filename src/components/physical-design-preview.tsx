@@ -14,6 +14,8 @@ import {
 import type { Settings } from "@/lib/settings"
 
 const PAGE_HEIGHT = 3
+const RESTING_VOLUME_EPSILON = 0.0001
+const CAMERA_FIT_MARGIN = 1.08
 
 const materialPresetOptions = Object.fromEntries(
   Object.entries(materialPresets).map(([id, preset]) => [id, preset.label]),
@@ -55,8 +57,7 @@ function createPaperMaterial(model: PhysicalPreviewModel, active = false) {
     roughness: 0.78 - materialPreset.stiffness * 0.25,
     transmission: materialPreset.translucency * 0.2,
     thickness: 0.01,
-    transparent: materialPreset.translucency > 0,
-    opacity: 1 - materialPreset.translucency * 0.08,
+    opacity: 1,
     side: THREE.DoubleSide,
   })
 }
@@ -91,13 +92,17 @@ function addRestingVolume({
   const pivot = new THREE.Group()
   pivot.rotation.y = rotation(model.openingDegrees)
   openingPivots.push({ object: pivot, rotation })
-  const depth = Math.max(0.012, sheetCount * depthPerSheet)
+  const depth = sheetCount * depthPerSheet
   const volume = new THREE.Mesh(
     createProfiledVolumeGeometry(width, height, depth, model.materialPreset.profile),
     createPaperMaterial(model),
   )
   volume.name = `${sheetCount} resting ${sheetCount === 1 ? "sheet" : "sheets"}`
-  volume.position.x = side * width * 0.5
+  volume.position.set(
+    side * width * 0.5,
+    0,
+    -(depth / 2 + model.materialPreset.profile * depth * 0.4 + RESTING_VOLUME_EPSILON),
+  )
   volume.castShadow = false
   volume.receiveShadow = true
   pivot.add(volume)
@@ -126,6 +131,10 @@ function createActivePageMesh(
   page.position.x = side * width * 0.5
   page.castShadow = false
   page.receiveShadow = true
+  page.renderOrder = 1
+  // ponytail: foreground the selected sheet until camera orbit can resolve stack occlusion.
+  page.material.depthTest = false
+  page.material.depthWrite = false
   return page
 }
 
@@ -262,14 +271,8 @@ function replacePageBlock(
 type RendererState = {
   pageBlock: THREE.Group
   openingPivots: OpeningPivot[]
-  invalidate: () => void
-}
-
-function updateOpening(rendererState: RendererState, openingDegrees: number) {
-  for (const pivot of rendererState.openingPivots) {
-    pivot.object.rotation.y = pivot.rotation(openingDegrees)
-  }
-  rendererState.invalidate()
+  updateOpening: (openingDegrees: number) => void
+  refit: (openingRange?: readonly [number, number]) => void
 }
 
 export function PhysicalDesignPreview({
@@ -327,7 +330,6 @@ export function PhysicalDesignPreview({
     const renderer = new THREE.WebGLRenderer({ antialias: true })
     renderer.domElement.className = "absolute inset-0 h-full w-full"
     renderer.outputColorSpace = THREE.SRGBColorSpace
-    renderer.shadowMap.enabled = true
     viewport.append(renderer.domElement)
 
     const scene = new THREE.Scene()
@@ -340,8 +342,7 @@ export function PhysicalDesignPreview({
     scene.add(pageBlock)
     scene.add(new THREE.HemisphereLight("#fff7e7", "#3b2e25", 2.2))
     const keyLight = new THREE.DirectionalLight("#ffe8c3", 3)
-    keyLight.position.set(-3, 5, 6)
-    keyLight.castShadow = true
+    keyLight.position.set(0, 5, 6)
     scene.add(keyLight)
 
     let frame = 0
@@ -352,6 +353,43 @@ export function PhysicalDesignPreview({
         renderer.render(scene, camera)
       })
     }
+    const openingPivots: OpeningPivot[] = []
+    let fitOpeningRange: readonly [number, number] | undefined
+    const applyOpening = (degrees: number) => {
+      for (const pivot of openingPivots) pivot.object.rotation.y = pivot.rotation(degrees)
+    }
+    const refit = (openingRange?: readonly [number, number]) => {
+      if (openingRange) fitOpeningRange = openingRange
+      if (!fitOpeningRange || !camera.aspect) return
+
+      const bounds = new THREE.Box3()
+      for (const endpoint of fitOpeningRange) {
+        applyOpening(endpoint)
+        pageBlock.updateWorldMatrix(true, true)
+        bounds.union(new THREE.Box3().setFromObject(pageBlock))
+      }
+      applyOpening(openingDegreesRef.current)
+      if (bounds.isEmpty()) return
+
+      const verticalTangent = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))
+      const verticalExtent = Math.max(
+        Math.abs(bounds.min.y - camera.position.y),
+        Math.abs(bounds.max.y - camera.position.y),
+      )
+      const horizontalExtent = Math.max(Math.abs(bounds.min.x), Math.abs(bounds.max.x))
+      const perspectiveDistance = Math.max(
+        verticalExtent / verticalTangent,
+        horizontalExtent / (verticalTangent * camera.aspect),
+      )
+      camera.position.z = bounds.max.z + perspectiveDistance * CAMERA_FIT_MARGIN
+      camera.lookAt(0, 0, 0)
+      camera.updateProjectionMatrix()
+      invalidate()
+    }
+    const updateOpening = (degrees: number) => {
+      applyOpening(degrees)
+      invalidate()
+    }
     const resize = () => {
       const { width, height } = viewport.getBoundingClientRect()
       if (!width || !height) return
@@ -359,6 +397,7 @@ export function PhysicalDesignPreview({
       renderer.setSize(width, height, false)
       camera.aspect = width / height
       camera.updateProjectionMatrix()
+      refit()
       invalidate()
     }
     const onContextLost = (event: Event) => {
@@ -371,7 +410,7 @@ export function PhysicalDesignPreview({
     }
     const resizeObserver = new ResizeObserver(resize)
 
-    rendererStateRef.current = { pageBlock, openingPivots: [], invalidate }
+    rendererStateRef.current = { pageBlock, openingPivots, updateOpening, refit }
     renderer.domElement.addEventListener("webglcontextlost", onContextLost)
     renderer.domElement.addEventListener("webglcontextrestored", onContextRestored)
     resizeObserver.observe(viewport)
@@ -393,13 +432,17 @@ export function PhysicalDesignPreview({
     const rendererState = rendererStateRef.current
     if (!rendererState) return
     replacePageBlock(rendererState.pageBlock, model, rendererState.openingPivots)
-    updateOpening(rendererState, openingDegreesRef.current)
-  }, [model])
+    rendererState.updateOpening(openingDegreesRef.current)
+    rendererState.refit([
+      resolveOpeningDegrees(settings.binding, materialPreset, 0),
+      resolveOpeningDegrees(settings.binding, materialPreset, 100),
+    ])
+  }, [model, materialPreset, settings.binding])
 
   useEffect(() => {
     const rendererState = rendererStateRef.current
     if (!rendererState) return
-    updateOpening(rendererState, openingDegrees)
+    rendererState.updateOpening(openingDegrees)
   }, [openingDegrees])
 
   return (
