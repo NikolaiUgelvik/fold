@@ -4,9 +4,11 @@ import test from "node:test"
 import { type Binding, createImposition } from "./imposition.ts"
 import {
   createPhysicalPreviewModel,
+  getReaderPose,
   type MaterialPresetId,
   type PhysicalPreviewModel,
   resolveOpeningDegrees,
+  stepReaderPose,
 } from "./physical-preview.ts"
 
 function assertPreview(
@@ -14,13 +16,14 @@ function assertPreview(
   expected: Pick<
     PhysicalPreviewModel,
     "construction" | "selectedSurface" | "activeUnitIndex" | "restingCounts"
-  > & { unitCount?: number },
+  > & { unitCount?: number; readerPose?: PhysicalPreviewModel["readerPose"] },
 ) {
   assert.equal(preview.construction, expected.construction)
   if (expected.unitCount !== undefined) assert.equal(preview.units.length, expected.unitCount)
   assert.deepEqual(preview.selectedSurface, expected.selectedSurface)
   assert.equal(preview.activeUnitIndex, expected.activeUnitIndex)
   assert.deepEqual(preview.restingCounts, expected.restingCounts)
+  if (expected.readerPose !== undefined) assert.deepEqual(preview.readerPose, expected.readerPose)
 }
 
 function createPreview({
@@ -72,10 +75,11 @@ test("resolves a coptic logical page through its imposed Folded Sheet", () => {
     },
     activeUnitIndex: 1,
     restingCounts: { left: 1, right: 2 },
+    readerPose: { kind: "spread", anchor: 2, pages: [2, 3] },
   })
 })
 
-test("keeps page five beside its imposed facing page", () => {
+test("keeps page five's imposed source while presenting its reader spread", () => {
   const preview = createPreview({
     binding: "coptic",
     bindingEdge: "left",
@@ -97,7 +101,18 @@ test("keeps page five beside its imposed facing page", () => {
     },
     activeUnitIndex: 2,
     restingCounts: { left: 2, right: 13 },
+    readerPose: { kind: "spread", anchor: 4, pages: [4, 5] },
   })
+})
+
+test("steps reader poses by their anchors", () => {
+  assert.deepEqual(getReaderPose(1, 16), { kind: "front", anchor: 1, pages: [1] })
+  assert.deepEqual(getReaderPose(16, 16), { kind: "back", anchor: 16, pages: [16] })
+  assert.equal(stepReaderPose(1, 16, 1), 2)
+  assert.equal(stepReaderPose(3, 16, -1), 1)
+  assert.equal(stepReaderPose(3, 16, 1), 4)
+  assert.equal(stepReaderPose(15, 16, 1), 16)
+  assert.equal(stepReaderPose(16, 16, -1), 14)
 })
 
 test("derives yotsume cut leaves from the imposed sides", () => {

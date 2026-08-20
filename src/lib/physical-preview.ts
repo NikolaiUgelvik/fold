@@ -53,6 +53,10 @@ export type PhysicalPreviewUnit = {
   surfaces: PhysicalPageSurface[]
 }
 
+export type ReaderPose =
+  | { kind: "front" | "back"; anchor: number; pages: [number] }
+  | { kind: "spread"; anchor: number; pages: [number, number] }
+
 export type PhysicalPreviewModel = {
   construction: "page-block" | "leaf-stack"
   bindingEdge: BindingEdge
@@ -62,6 +66,7 @@ export type PhysicalPreviewModel = {
   units: PhysicalPreviewUnit[]
   activeUnitIndex: number
   selectedSurface: PhysicalPageSurface & { facingLogicalPage: number }
+  readerPose?: ReaderPose
   restingCounts: { left: number; right: number }
 }
 
@@ -124,6 +129,19 @@ function createLeafUnits(sides: ImpositionSide[]) {
   return units
 }
 
+export function getReaderPose(logicalPage: number, totalPages: number): ReaderPose {
+  if (logicalPage === 1) return { kind: "front", anchor: 1, pages: [1] }
+  if (logicalPage === totalPages) return { kind: "back", anchor: totalPages, pages: [totalPages] }
+  const anchor = logicalPage % 2 === 0 ? logicalPage : logicalPage - 1
+  return { kind: "spread", anchor, pages: [anchor, anchor + 1] }
+}
+
+export function stepReaderPose(logicalPage: number, totalPages: number, direction: -1 | 1) {
+  const { anchor } = getReaderPose(logicalPage, totalPages)
+  if (direction === -1) return anchor === 1 ? 1 : Math.max(1, anchor - 2)
+  return anchor === 1 ? Math.min(2, totalPages) : Math.min(totalPages, anchor + 2)
+}
+
 export function resolveOpeningDegrees(
   binding: Binding,
   materialPreset: MaterialPresetId,
@@ -154,7 +172,8 @@ export function createPhysicalPreviewModel({
   materialPreset: MaterialPresetId
   opening: number
 }): PhysicalPreviewModel {
-  const units = isFoldedBinding(binding) ? createFoldedUnits(sides) : createLeafUnits(sides)
+  const folded = isFoldedBinding(binding)
+  const units = folded ? createFoldedUnits(sides) : createLeafUnits(sides)
   const activeUnitIndex = units.findIndex((unit) =>
     unit.surfaces.some((surface) => surface.logicalPage === logicalPage),
   )
@@ -170,7 +189,7 @@ export function createPhysicalPreviewModel({
   if (!facing) throw new RangeError(`Logical page ${logicalPage} has no facing surface`)
 
   return {
-    construction: isFoldedBinding(binding) ? "page-block" : "leaf-stack",
+    construction: folded ? "page-block" : "leaf-stack",
     bindingEdge,
     pageSize,
     materialPreset: materialPresets[materialPreset],
@@ -178,6 +197,9 @@ export function createPhysicalPreviewModel({
     units,
     activeUnitIndex,
     selectedSurface: { ...selected, facingLogicalPage: facing.logicalPage },
+    readerPose: folded
+      ? getReaderPose(logicalPage, new Set(sides.flatMap((side) => side.pages)).size)
+      : undefined,
     restingCounts: { left: activeUnitIndex, right: units.length - activeUnitIndex - 1 },
   }
 }

@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { Minus, Plus, RotateCcw, RotateCw } from "lucide-react"
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react"
 import * as THREE from "three"
 import WebGL from "three/addons/capabilities/WebGL.js"
+import { OrbitControls } from "three/addons/controls/OrbitControls.js"
 
 import { SelectControl } from "@/components/form-controls"
 import {
@@ -8,6 +10,7 @@ import {
   getSurfaceFontRequests,
   TextRunAtlas,
 } from "@/components/physical-page-art"
+import { Button } from "@/components/ui/button"
 import type { createNotebookDocument } from "@/lib/notebook-document"
 import { createPageSurface, type PageSurface } from "@/lib/page-surface"
 import {
@@ -16,12 +19,16 @@ import {
   materialPresets,
   type PhysicalPreviewModel,
   resolveOpeningDegrees,
+  stepReaderPose,
 } from "@/lib/physical-preview"
 import type { Settings } from "@/lib/settings"
 
 const PAGE_HEIGHT = 3
 const RESTING_VOLUME_EPSILON = 0.0001
 const CAMERA_FIT_MARGIN = 1.08
+const CAMERA_ROTATION_STEP = THREE.MathUtils.degToRad(15)
+const CAMERA_ZOOM_FACTOR = 1.2
+const TURN_DURATION = 220
 
 const materialPresetOptions = Object.fromEntries(
   Object.entries(materialPresets).map(([id, preset]) => [id, preset.label]),
@@ -125,6 +132,59 @@ function addRestingVolume({
   parent.add(pivot)
 }
 
+function addRestingFoldedSheet({
+  parent,
+  sheet,
+  sheetIndex,
+  sheetCount,
+  width,
+  height,
+  depthPerSheet,
+  model,
+  openingPivots,
+  leftRotation,
+  rightRotation,
+}: {
+  parent: THREE.Group
+  sheet: number
+  sheetIndex: number
+  sheetCount: number
+  width: number
+  height: number
+  depthPerSheet: number
+  model: PhysicalPreviewModel
+  openingPivots: OpeningPivot[]
+  leftRotation: (openingDegrees: number) => number
+  rightRotation: (openingDegrees: number) => number
+}) {
+  const foldedSheet = new THREE.Group()
+  foldedSheet.name = `Folded Sheet ${sheet}`
+  foldedSheet.position.z = (sheetIndex - (sheetCount - 1) / 2) * depthPerSheet
+  addRestingVolume({
+    parent: foldedSheet,
+    side: -1,
+    sheetCount: 1,
+    width,
+    height,
+    depthPerSheet,
+    model,
+    openingPivots,
+    rotation: leftRotation,
+  })
+  addRestingVolume({
+    parent: foldedSheet,
+    side: 1,
+    sheetCount: 1,
+    width,
+    height,
+    depthPerSheet,
+    model,
+    openingPivots,
+    rotation: rightRotation,
+  })
+  parent.add(foldedSheet)
+}
+
 type PageArtLayer = {
   surface: PageSurface
   renderSide: THREE.Side
@@ -187,6 +247,7 @@ type ActivePageSurfaces = {
   facing: PageSurface
   left: PageSurface
   right: PageSurface
+  visible: PageSurface[]
 }
 
 function getPageDimensions(model: PhysicalPreviewModel) {
@@ -213,82 +274,85 @@ function createPageBlock(
     THREE.MathUtils.degToRad(180 - openingDegrees) / 2
   const rightRotation = (openingDegrees: number) => -leftRotation(openingDegrees)
   const signatures = [...new Set(model.units.map((unit) => unit.signature))]
-  const activeSignature = model.units[model.activeUnitIndex].signature
 
   for (const [signatureIndex, signature] of signatures.entries()) {
-    const firstUnit = model.units.findIndex((unit) => unit.signature === signature)
-    const unitCount = model.units.filter((unit) => unit.signature === signature).length
-    const lastUnit = firstUnit + unitCount
-    const leftCount = Math.min(unitCount, Math.max(0, model.activeUnitIndex - firstUnit))
-    const rightCount = Math.min(unitCount, Math.max(0, lastUnit - model.activeUnitIndex - 1))
+    const sheets = model.units.filter((unit) => unit.signature === signature)
     const signatureGroup = new THREE.Group()
     signatureGroup.name = `Signature ${signature}`
-    signatureGroup.position.z = (signatureIndex - (signatures.length - 1) / 2) * signatureGap
+    signatureGroup.position.z =
+      (signatureIndex - (signatures.length - 1) / 2) * (sheets.length * sheetDepth + signatureGap)
     pageBlock.add(signatureGroup)
 
-    addRestingVolume({
-      parent: signatureGroup,
-      side: -1,
-      sheetCount: leftCount,
-      width,
-      height: PAGE_HEIGHT,
-      depthPerSheet: sheetDepth,
-      model,
-      openingPivots,
-      rotation: leftRotation,
-    })
-    addRestingVolume({
-      parent: signatureGroup,
-      side: 1,
-      sheetCount: rightCount,
-      width,
-      height: PAGE_HEIGHT,
-      depthPerSheet: sheetDepth,
-      model,
-      openingPivots,
-      rotation: rightRotation,
-    })
-
-    if (signature === activeSignature) {
-      const activeSheet = new THREE.Group()
-      activeSheet.name = `Active Folded Sheet ${model.selectedSurface.sheet}`
-      activeSheet.position.z = signatureGroup.position.z
-      activeSheet.userData.selectedSurface = model.selectedSurface
-      activeSheet.rotation.y = 0
-      const leftPivot = new THREE.Group()
-      leftPivot.rotation.y = leftRotation(model.openingDegrees)
-      openingPivots.push({ object: leftPivot, rotation: leftRotation })
-      leftPivot.add(
-        createActivePageMesh(
-          width,
-          PAGE_HEIGHT,
-          model,
-          -1,
-          [{ surface: surfaces.left, renderSide: THREE.FrontSide }],
-          atlas,
-          includeText,
-          paperColor,
-        ),
-      )
-      const rightPivot = new THREE.Group()
-      rightPivot.rotation.y = rightRotation(model.openingDegrees)
-      openingPivots.push({ object: rightPivot, rotation: rightRotation })
-      rightPivot.add(
-        createActivePageMesh(
-          width,
-          PAGE_HEIGHT,
-          model,
-          1,
-          [{ surface: surfaces.right, renderSide: THREE.FrontSide }],
-          atlas,
-          includeText,
-          paperColor,
-        ),
-      )
-      activeSheet.add(leftPivot, rightPivot)
-      pageBlock.add(activeSheet)
+    for (const [sheetIndex, sheet] of sheets.entries()) {
+      addRestingFoldedSheet({
+        parent: signatureGroup,
+        sheet: sheet.sheet,
+        sheetIndex,
+        sheetCount: sheets.length,
+        width,
+        height: PAGE_HEIGHT,
+        depthPerSheet: sheetDepth,
+        model,
+        openingPivots,
+        leftRotation,
+        rightRotation,
+      })
     }
   }
+
+  const readerPose = model.readerPose
+  if (!readerPose) return
+
+  const activePose = new THREE.Group()
+  activePose.name = `Active Reader Pose ${readerPose.pages.join("–")}`
+  activePose.userData.readerPose = readerPose
+  if (readerPose.kind === "spread") {
+    const leftPivot = new THREE.Group()
+    leftPivot.rotation.y = leftRotation(model.openingDegrees)
+    openingPivots.push({ object: leftPivot, rotation: leftRotation })
+    leftPivot.add(
+      createActivePageMesh(
+        width,
+        PAGE_HEIGHT,
+        model,
+        -1,
+        [{ surface: surfaces.left, renderSide: THREE.FrontSide }],
+        atlas,
+        includeText,
+        paperColor,
+      ),
+    )
+    const rightPivot = new THREE.Group()
+    rightPivot.rotation.y = rightRotation(model.openingDegrees)
+    openingPivots.push({ object: rightPivot, rotation: rightRotation })
+    rightPivot.add(
+      createActivePageMesh(
+        width,
+        PAGE_HEIGHT,
+        model,
+        1,
+        [{ surface: surfaces.right, renderSide: THREE.FrontSide }],
+        atlas,
+        includeText,
+        paperColor,
+      ),
+    )
+    activePose.add(leftPivot, rightPivot)
+  } else {
+    const page = createActivePageMesh(
+      width,
+      PAGE_HEIGHT,
+      model,
+      readerPose.kind === "front" ? 1 : -1,
+      [{ surface: surfaces.visible[0], renderSide: THREE.FrontSide }],
+      atlas,
+      includeText,
+      paperColor,
+    )
+    page.position.x = 0
+    activePose.add(page)
+  }
+  pageBlock.add(activePose)
 }
 
 function createLeafStack(
@@ -371,7 +435,7 @@ function replacePageBlock(
 ) {
   disposePageBlock(pageBlock)
   openingPivots.length = 0
-  atlas.prepare(includeText ? [surfaces.selected, surfaces.facing] : [])
+  atlas.prepare(includeText ? surfaces.visible : [])
   if (model.construction === "page-block") {
     createPageBlock(model, pageBlock, openingPivots, surfaces, atlas, includeText, paperColor)
   } else {
@@ -385,31 +449,49 @@ type RendererState = {
   textAtlas: TextRunAtlas
   updateOpening: (openingDegrees: number) => void
   refit: (openingRange?: readonly [number, number]) => void
+  rotateCamera: (angle: number) => void
+  zoomCamera: (inward: boolean) => void
+  resetCamera: () => void
+  cancelTurn: () => boolean
+  animateTurn: (direction: -1 | 1) => void
+}
+
+function usePrefersReducedMotion() {
+  const [reducedMotion, setReducedMotion] = useState(
+    () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
+  )
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)")
+    const update = () => setReducedMotion(query.matches)
+    query.addEventListener("change", update)
+    return () => query.removeEventListener("change", update)
+  }, [])
+  return reducedMotion
 }
 
 function useActivePageSurfaces(
   settings: Settings,
-  selectedSurface: PhysicalPreviewModel["selectedSurface"],
+  model: PhysicalPreviewModel,
   punchHoleSets: Settings["punchHoleSets"],
   punchHolePages: Set<number>,
 ) {
   return useMemo<ActivePageSurfaces>(() => {
-    const selected = createPageSurface(
-      settings,
-      selectedSurface.logicalPage,
-      punchHoleSets,
-      punchHolePages.has(selectedSurface.logicalPage),
+    const logicalPages = model.readerPose?.pages ?? [
+      model.selectedSurface.logicalPage,
+      model.selectedSurface.facingLogicalPage,
+    ]
+    const visible = logicalPages.map((logicalPage) =>
+      createPageSurface(settings, logicalPage, punchHoleSets, punchHolePages.has(logicalPage)),
     )
-    const facing = createPageSurface(
-      settings,
-      selectedSurface.facingLogicalPage,
-      punchHoleSets,
-      punchHolePages.has(selectedSurface.facingLogicalPage),
-    )
-    const [left, right] =
-      selected.metrics.bindingEdge === "right" ? [selected, facing] : [facing, selected]
-    return { selected, facing, left, right }
-  }, [punchHolePages, punchHoleSets, selectedSurface, settings])
+    const selected = visible[0]
+    const facing = visible[1] ?? selected
+    const [left, right] = model.readerPose
+      ? [selected, facing]
+      : selected.metrics.bindingEdge === "right"
+        ? [selected, facing]
+        : [facing, selected]
+    return { selected, facing, left, right, visible }
+  }, [model, punchHolePages, punchHoleSets, settings])
 }
 
 function useSurfaceTextReady(activeSurfaces: ActivePageSurfaces) {
@@ -419,7 +501,7 @@ function useSurfaceTextReady(activeSurfaces: ActivePageSurfaces) {
     let cancelled = false
     setReadySurfaceKey("")
     const fonts = globalThis.document.fonts
-    const requests = getSurfaceFontRequests([activeSurfaces.selected, activeSurfaces.facing])
+    const requests = getSurfaceFontRequests(activeSurfaces.visible)
     void fonts.ready
       .then(() =>
         Promise.all([...requests].map(([font, text]) => fonts.load(font, [...text].join("")))),
@@ -442,6 +524,7 @@ export function PhysicalDesignPreview({
   currentPage,
   materialPreset,
   opening,
+  onCurrentPageChange,
   onMaterialPresetChange,
   onOpeningChange,
 }: {
@@ -450,11 +533,16 @@ export function PhysicalDesignPreview({
   currentPage: number
   materialPreset: MaterialPresetId
   opening: number
+  onCurrentPageChange: (page: number) => void
   onMaterialPresetChange: (preset: MaterialPresetId) => void
   onOpeningChange: (opening: number) => void
 }) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const rendererStateRef = useRef<RendererState>(null)
+  const previousPageRef = useRef(currentPage)
+  const pendingTurnRef = useRef<-1 | 1 | undefined>(undefined)
+  const reducedMotion = usePrefersReducedMotion()
+  const [animateTurns, setAnimateTurns] = useState(() => !reducedMotion)
   const [status, setStatus] = useState<"ready" | "unsupported" | "context-lost">("ready")
   const model = useMemo(
     () =>
@@ -476,16 +564,44 @@ export function PhysicalDesignPreview({
       settings.bindingEdge,
     ],
   )
+  const previousReaderPoseAnchorRef = useRef(model.readerPose?.anchor)
   const activeSurfaces = useActivePageSurfaces(
     settings,
-    model.selectedSurface,
+    model,
     document.punchHoleSets,
     document.punchHolePages,
   )
   const includeText = useSurfaceTextReady(activeSurfaces)
   const openingDegrees = resolveOpeningDegrees(settings.binding, materialPreset, opening)
-  const openingDegreesRef = useRef(openingDegrees)
-  openingDegreesRef.current = openingDegrees
+  const effectiveOpeningDegrees = model.readerPose?.kind === "spread" ? openingDegrees : 0
+  const openingDegreesRef = useRef(effectiveOpeningDegrees)
+  openingDegreesRef.current = effectiveOpeningDegrees
+
+  useEffect(() => {
+    if (reducedMotion) setAnimateTurns(false)
+  }, [reducedMotion])
+
+  function handlePreviewKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (!(event.target instanceof HTMLCanvasElement)) return
+    if (event.altKey || event.ctrlKey || event.metaKey) return
+    const page =
+      event.key === "ArrowLeft"
+        ? model.readerPose
+          ? stepReaderPose(currentPage, document.totalPages, -1)
+          : currentPage - 1
+        : event.key === "ArrowRight"
+          ? model.readerPose
+            ? stepReaderPose(currentPage, document.totalPages, 1)
+            : currentPage + 1
+          : event.key === "Home"
+            ? 1
+            : event.key === "End"
+              ? document.totalPages
+              : undefined
+    if (page === undefined) return
+    event.preventDefault()
+    onCurrentPageChange(Math.min(document.totalPages, Math.max(1, page)))
+  }
 
   useEffect(() => {
     const viewport = viewportRef.current
@@ -497,6 +613,9 @@ export function PhysicalDesignPreview({
 
     const renderer = new THREE.WebGLRenderer({ antialias: true })
     renderer.domElement.className = "absolute inset-0 h-full w-full"
+    renderer.domElement.tabIndex = 0
+    renderer.domElement.setAttribute("aria-label", "Physical Design Preview")
+    renderer.domElement.setAttribute("aria-keyshortcuts", "ArrowLeft ArrowRight Home End")
     renderer.outputColorSpace = THREE.SRGBColorSpace
     viewport.append(renderer.domElement)
 
@@ -505,6 +624,12 @@ export function PhysicalDesignPreview({
     const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100)
     camera.position.set(0, 0.15, 6.4)
     camera.lookAt(0, 0, 0)
+    const controls = new OrbitControls(camera, renderer.domElement)
+    controls.enablePan = false
+    controls.minAzimuthAngle = -Math.PI / 4
+    controls.maxAzimuthAngle = Math.PI / 4
+    controls.minPolarAngle = Math.PI / 6
+    controls.maxPolarAngle = Math.PI / 2 + 0.15
     const pageBlock = new THREE.Group()
     pageBlock.name = "Page Block"
     scene.add(pageBlock)
@@ -514,6 +639,7 @@ export function PhysicalDesignPreview({
     scene.add(keyLight)
 
     let frame = 0
+    let turnFrame = 0
     const invalidate = () => {
       if (frame) return
       frame = requestAnimationFrame(() => {
@@ -521,9 +647,49 @@ export function PhysicalDesignPreview({
         renderer.render(scene, camera)
       })
     }
+    controls.addEventListener("change", invalidate)
     const openingPivots: OpeningPivot[] = []
     const textAtlas = new TextRunAtlas()
     let fitOpeningRange: readonly [number, number] | undefined
+    const defaultCameraPosition = new THREE.Vector3()
+    const defaultCameraTarget = new THREE.Vector3()
+    const resetCamera = () => {
+      camera.position.copy(defaultCameraPosition)
+      controls.target.copy(defaultCameraTarget)
+      controls.update()
+      invalidate()
+    }
+    const rotateCamera = (angle: number) => {
+      controls.rotateLeft(angle)
+      controls.update()
+    }
+    const zoomCamera = (inward: boolean) => {
+      if (inward) controls.dollyIn(CAMERA_ZOOM_FACTOR)
+      else controls.dollyOut(CAMERA_ZOOM_FACTOR)
+      controls.update()
+    }
+    const cancelTurn = () => {
+      if (!turnFrame) return false
+      cancelAnimationFrame(turnFrame)
+      turnFrame = 0
+      return true
+    }
+    const animateTurn = (direction: -1 | 1) => {
+      const activeSheet = pageBlock.children.find((child) => child.name.startsWith("Active "))
+      if (!activeSheet) return
+      cancelTurn()
+      const start = performance.now()
+      const startRotation = -direction * Math.PI * 0.5
+      activeSheet.rotation.y = startRotation
+      const renderTurn = (time: number) => {
+        const progress = Math.min(1, (time - start) / TURN_DURATION)
+        activeSheet.rotation.y = startRotation * (1 - progress) ** 3
+        renderer.render(scene, camera)
+        if (progress < 1) turnFrame = requestAnimationFrame(renderTurn)
+        else turnFrame = 0
+      }
+      turnFrame = requestAnimationFrame(renderTurn)
+    }
     const applyOpening = (degrees: number) => {
       for (const pivot of openingPivots) pivot.object.rotation.y = pivot.rotation(degrees)
     }
@@ -540,20 +706,31 @@ export function PhysicalDesignPreview({
       applyOpening(openingDegreesRef.current)
       if (bounds.isEmpty()) return
 
+      bounds.getCenter(defaultCameraTarget)
+      defaultCameraTarget.y = 0
       const verticalTangent = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))
       const verticalExtent = Math.max(
-        Math.abs(bounds.min.y - camera.position.y),
-        Math.abs(bounds.max.y - camera.position.y),
+        Math.abs(bounds.min.y - defaultCameraTarget.y),
+        Math.abs(bounds.max.y - defaultCameraTarget.y),
       )
-      const horizontalExtent = Math.max(Math.abs(bounds.min.x), Math.abs(bounds.max.x))
+      const horizontalExtent = Math.max(
+        Math.abs(bounds.min.x - defaultCameraTarget.x),
+        Math.abs(bounds.max.x - defaultCameraTarget.x),
+      )
       const perspectiveDistance = Math.max(
         verticalExtent / verticalTangent,
         horizontalExtent / (verticalTangent * camera.aspect),
       )
-      camera.position.z = bounds.max.z + perspectiveDistance * CAMERA_FIT_MARGIN
-      camera.lookAt(0, 0, 0)
+      defaultCameraPosition.set(
+        defaultCameraTarget.x + perspectiveDistance * 0.35,
+        defaultCameraTarget.y + perspectiveDistance * 0.15,
+        bounds.max.z + perspectiveDistance * CAMERA_FIT_MARGIN,
+      )
+      const defaultDistance = defaultCameraPosition.distanceTo(defaultCameraTarget)
+      controls.minDistance = defaultDistance * 0.7
+      controls.maxDistance = defaultDistance * 1.5
       camera.updateProjectionMatrix()
-      invalidate()
+      resetCamera()
     }
     const updateOpening = (degrees: number) => {
       applyOpening(degrees)
@@ -579,7 +756,18 @@ export function PhysicalDesignPreview({
     }
     const resizeObserver = new ResizeObserver(resize)
 
-    rendererStateRef.current = { pageBlock, openingPivots, textAtlas, updateOpening, refit }
+    rendererStateRef.current = {
+      pageBlock,
+      openingPivots,
+      textAtlas,
+      updateOpening,
+      refit,
+      rotateCamera,
+      zoomCamera,
+      resetCamera,
+      cancelTurn,
+      animateTurn,
+    }
     renderer.domElement.addEventListener("webglcontextlost", onContextLost)
     renderer.domElement.addEventListener("webglcontextrestored", onContextRestored)
     resizeObserver.observe(viewport)
@@ -588,7 +776,10 @@ export function PhysicalDesignPreview({
     return () => {
       rendererStateRef.current = null
       cancelAnimationFrame(frame)
+      cancelTurn()
       resizeObserver.disconnect()
+      controls.removeEventListener("change", invalidate)
+      controls.dispose()
       renderer.domElement.removeEventListener("webglcontextlost", onContextLost)
       renderer.domElement.removeEventListener("webglcontextrestored", onContextRestored)
       disposePageBlock(pageBlock)
@@ -601,6 +792,27 @@ export function PhysicalDesignPreview({
   useEffect(() => {
     const rendererState = rendererStateRef.current
     if (!rendererState) return
+    const previousPage = previousPageRef.current
+    const pageChanged = currentPage !== previousPage
+    const previousReaderPoseAnchor = previousReaderPoseAnchorRef.current
+    const readerPoseDistance =
+      model.readerPose && previousReaderPoseAnchor !== undefined
+        ? model.readerPose.anchor - previousReaderPoseAnchor
+        : undefined
+    const turnDistance = readerPoseDistance ?? currentPage - previousPage
+    const wasTurning = rendererState.cancelTurn()
+    if (!animateTurns) pendingTurnRef.current = undefined
+    if (pageChanged) {
+      pendingTurnRef.current =
+        animateTurns &&
+        !wasTurning &&
+        Math.abs(turnDistance) <= (model.readerPose ? 2 : 1) &&
+        turnDistance !== 0
+          ? turnDistance > 0
+            ? 1
+            : -1
+          : undefined
+    }
     replacePageBlock(
       rendererState.pageBlock,
       model,
@@ -611,56 +823,128 @@ export function PhysicalDesignPreview({
       settings.previewPaperColor,
     )
     rendererState.updateOpening(openingDegreesRef.current)
-    rendererState.refit([
-      resolveOpeningDegrees(settings.binding, materialPreset, 0),
-      resolveOpeningDegrees(settings.binding, materialPreset, 100),
-    ])
+    rendererState.refit(
+      model.readerPose?.kind === "spread" || !model.readerPose
+        ? [
+            resolveOpeningDegrees(settings.binding, materialPreset, 0),
+            resolveOpeningDegrees(settings.binding, materialPreset, 100),
+          ]
+        : [0, 0],
+    )
+    const pendingTurn = pendingTurnRef.current
+    if (animateTurns && includeText && pendingTurn) {
+      rendererState.animateTurn(pendingTurn)
+      pendingTurnRef.current = undefined
+    }
+    previousPageRef.current = currentPage
+    previousReaderPoseAnchorRef.current = model.readerPose?.anchor
   }, [
     activeSurfaces,
+    animateTurns,
+    currentPage,
+    includeText,
     materialPreset,
     model,
     settings.binding,
     settings.previewPaperColor,
-    includeText,
   ])
 
   useEffect(() => {
     const rendererState = rendererStateRef.current
     if (!rendererState) return
-    rendererState.updateOpening(openingDegrees)
-  }, [openingDegrees])
+    rendererState.updateOpening(effectiveOpeningDegrees)
+  }, [effectiveOpeningDegrees])
 
   return (
     <section
       ref={viewportRef}
       aria-label={`Physical Design Preview, logical page ${currentPage}, ${model.construction === "page-block" ? "Page Block" : "Leaf Stack"}`}
       className="relative flex min-h-0 flex-1 overflow-hidden bg-primary"
+      onKeyDown={handlePreviewKeyDown}
     >
       {status === "ready" ? (
-        <fieldset className="absolute right-4 bottom-4 z-10 flex items-end gap-3 rounded-md border border-white/20 bg-primary/80 p-3 text-primary-foreground shadow-lg backdrop-blur-sm">
-          <div className="grid gap-1 text-caption font-semibold">
-            <span>Material</span>
-            <SelectControl
-              value={materialPreset}
-              onChange={(preset) => onMaterialPresetChange(preset as MaterialPresetId)}
-              options={materialPresetOptions}
-              ariaLabel="Material Preset"
-              className="h-8 w-32 border-white/20 bg-primary text-xs"
-            />
-          </div>
-          <label className="grid gap-1 text-caption font-semibold">
-            Opening {Math.round(opening)}%
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={opening}
-              className="h-8 w-28 accent-ring"
-              aria-label="Opening"
-              onChange={(event) => onOpeningChange(event.currentTarget.valueAsNumber)}
-            />
-          </label>
-        </fieldset>
+        <div className="absolute right-4 bottom-4 z-10 flex flex-wrap items-end justify-end gap-3 rounded-md border border-white/20 bg-primary/80 p-3 text-primary-foreground shadow-lg backdrop-blur-sm">
+          <fieldset className="flex gap-1" aria-label="Camera controls">
+            <Button
+              variant="outline"
+              size="icon-sm"
+              className="border-white/20 bg-primary"
+              aria-label="Rotate camera left"
+              onClick={() => rendererStateRef.current?.rotateCamera(CAMERA_ROTATION_STEP)}
+            >
+              <RotateCcw />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              className="border-white/20 bg-primary"
+              aria-label="Rotate camera right"
+              onClick={() => rendererStateRef.current?.rotateCamera(-CAMERA_ROTATION_STEP)}
+            >
+              <RotateCw />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              className="border-white/20 bg-primary"
+              aria-label="Zoom out"
+              onClick={() => rendererStateRef.current?.zoomCamera(false)}
+            >
+              <Minus />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              className="border-white/20 bg-primary"
+              aria-label="Zoom in"
+              onClick={() => rendererStateRef.current?.zoomCamera(true)}
+            >
+              <Plus />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              className="border-white/20 bg-primary"
+              aria-label="Reset camera"
+              onClick={() => rendererStateRef.current?.resetCamera()}
+            >
+              <RotateCcw />
+            </Button>
+          </fieldset>
+          <fieldset className="flex items-end gap-3" aria-label="Physical preview controls">
+            <div className="grid gap-1 text-caption font-semibold">
+              <span>Material</span>
+              <SelectControl
+                value={materialPreset}
+                onChange={(preset) => onMaterialPresetChange(preset as MaterialPresetId)}
+                options={materialPresetOptions}
+                ariaLabel="Material Preset"
+                className="h-8 w-32 border-white/20 bg-primary text-xs"
+              />
+            </div>
+            <label className="grid gap-1 text-caption font-semibold">
+              Opening {Math.round(opening)}%
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={opening}
+                className="h-8 w-28 accent-ring"
+                aria-label="Opening"
+                onChange={(event) => onOpeningChange(event.currentTarget.valueAsNumber)}
+              />
+            </label>
+            <label className="flex items-center gap-1 text-caption font-semibold">
+              <input
+                type="checkbox"
+                checked={animateTurns}
+                className="accent-ring"
+                onChange={(event) => setAnimateTurns(event.currentTarget.checked)}
+              />
+              Animate turns
+            </label>
+          </fieldset>
+        </div>
       ) : (
         <p
           className="relative z-10 m-auto max-w-56 text-center text-caption text-primary-foreground/75"
@@ -671,6 +955,9 @@ export function PhysicalDesignPreview({
             : "Physical Design Preview lost its graphics context. Switch to 2D preview and try again."}
         </p>
       )}
+      <p className="sr-only" aria-live="polite">
+        Physical preview page {currentPage} of {document.totalPages}
+      </p>
     </section>
   )
 }

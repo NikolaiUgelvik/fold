@@ -25,10 +25,10 @@ import {
 
 import { PageSvg } from "@/components/notebook-page"
 import { Button } from "@/components/ui/button"
-import type { ImpositionSide } from "@/lib/imposition"
+import { type ImpositionSide, isFoldedBinding } from "@/lib/imposition"
 import { type createNotebookDocument, createPunchGuideViewModel } from "@/lib/notebook-document"
 import { formatMillimeters } from "@/lib/paper"
-import type { MaterialPresetId } from "@/lib/physical-preview"
+import { type MaterialPresetId, stepReaderPose } from "@/lib/physical-preview"
 import { usesSeparatePunchGuide } from "@/lib/punch-holes"
 import { countPageAppearanceOverrides, resolvePageAppearance, type Settings } from "@/lib/settings"
 
@@ -50,6 +50,7 @@ type PreviewProps = {
 type PreviewMode = "2d" | "physical"
 
 type PreviewContentProps = PreviewProps & {
+  physicalPreviewSupported: boolean
   zoom: number
   onZoomChange: (zoom: number) => void
   mode: PreviewMode
@@ -61,6 +62,10 @@ type PreviewContentProps = PreviewProps & {
   showPlan: boolean
   onShowPlanChange: (shown: boolean) => void
   guidePreview: ReturnType<typeof createPunchGuideViewModel<Settings>>
+}
+
+function supportsPhysicalPreview() {
+  return Boolean(document.createElement("canvas").getContext("webgl2"))
 }
 
 const pageTypeIcons = {
@@ -127,9 +132,17 @@ function PreviewToolbar(props: PreviewContentProps) {
     guidePreview,
     mode,
     onModeChange,
+    physicalPreviewSupported,
   } = props
   const { totalPages, pageLayout, pageSize, pageName } = document
   const { shown: showPunchGuide, toggleLabel: guideToggleLabel } = guidePreview
+  const readerOrder = mode === "physical" && isFoldedBinding(settings.binding)
+  const previousPage = readerOrder
+    ? stepReaderPose(currentPage, totalPages, -1)
+    : Math.max(1, currentPage - 1)
+  const nextPage = readerOrder
+    ? stepReaderPose(currentPage, totalPages, 1)
+    : Math.min(totalPages, currentPage + 1)
   return (
     <div className="flex h-15 shrink-0 items-center justify-between border-b bg-secondary px-5 text-secondary-foreground">
       <div>
@@ -160,6 +173,8 @@ function PreviewToolbar(props: PreviewContentProps) {
             variant="outline"
             className="h-8 px-3 text-xs"
             aria-pressed={mode === "physical"}
+            aria-describedby={physicalPreviewSupported ? undefined : "physical-preview-unsupported"}
+            disabled={!physicalPreviewSupported}
             onClick={() => {
               onPreviewPunchGuideChange(false)
               onModeChange("physical")
@@ -167,6 +182,11 @@ function PreviewToolbar(props: PreviewContentProps) {
           >
             Physical
           </Button>
+          {!physicalPreviewSupported && (
+            <span id="physical-preview-unsupported" className="sr-only">
+              Physical Design Preview requires WebGL 2. The 2D preview is still available.
+            </span>
+          )}
         </fieldset>
         {mode === "2d" && (
           <div className="flex items-center gap-1">
@@ -213,18 +233,18 @@ function PreviewToolbar(props: PreviewContentProps) {
             <Button
               variant="outline"
               size="icon-sm"
-              aria-label="Previous page"
-              disabled={currentPage === 1}
-              onClick={() => onCurrentPageChange(currentPage - 1)}
+              aria-label={readerOrder ? "Physical previous" : "Previous page"}
+              disabled={previousPage === currentPage}
+              onClick={() => onCurrentPageChange(previousPage)}
             >
               <ArrowLeft />
             </Button>
             <Button
               variant="outline"
               size="icon-sm"
-              aria-label="Next page"
-              disabled={currentPage === totalPages}
-              onClick={() => onCurrentPageChange(currentPage + 1)}
+              aria-label={readerOrder ? "Physical next" : "Next page"}
+              disabled={nextPage === currentPage}
+              onClick={() => onCurrentPageChange(nextPage)}
             >
               <ArrowRight />
             </Button>
@@ -266,6 +286,7 @@ const PreviewPage = (props: PreviewContentProps) => {
           settings={settings}
           document={document}
           currentPage={currentPage}
+          onCurrentPageChange={props.onCurrentPageChange}
           materialPreset={materialPreset}
           opening={opening}
           onMaterialPresetChange={onMaterialPresetChange}
@@ -414,6 +435,7 @@ function PreviewStrip(props: PreviewContentProps) {
 
 // fallow-ignore-next-line private-type-leak -- Props are private to this feature module.
 export function Preview(props: PreviewProps): ReactNode {
+  const [physicalPreviewSupported] = useState(supportsPhysicalPreview)
   const [zoom, setZoom] = useState(100)
   const [mode, setMode] = useState<PreviewMode>("2d")
   const [materialPreset, setMaterialPreset] = useState<MaterialPresetId>("everyday")
@@ -421,6 +443,7 @@ export function Preview(props: PreviewProps): ReactNode {
   const [showPlan, setShowPlan] = useState(false)
   const contentProps: PreviewContentProps = {
     ...props,
+    physicalPreviewSupported,
     zoom,
     onZoomChange: setZoom,
     mode,
