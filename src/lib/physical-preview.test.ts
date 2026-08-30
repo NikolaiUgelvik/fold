@@ -43,10 +43,12 @@ function createPreview({
   sheets?: number
   twoUp?: boolean
 }) {
+  const sides = createImposition({ binding, signatures, sheetsPerSignature: sheets, twoUp })
   return createPhysicalPreviewModel({
     binding,
     bindingEdge,
-    sides: createImposition({ binding, signatures, sheetsPerSignature: sheets, twoUp }),
+    sides,
+    totalPages: new Set(sides.flatMap((side) => side.pages)).size,
     pageSize: { width: 148.5, height: 210 },
     logicalPage,
     materialPreset,

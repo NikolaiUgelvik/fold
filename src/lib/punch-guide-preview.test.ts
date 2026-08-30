@@ -1,25 +1,17 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import {
-  createNotebookDocument,
-  createPunchGuideViewModel,
-  type NotebookDocumentSettings,
-} from "./notebook-document.ts"
+import { createNotebookDocument, createPunchGuideViewModel } from "./notebook-document.ts"
+import { initialSettings, type Settings } from "./settings.ts"
 
-const settings: NotebookDocumentSettings = {
-  binding: "coptic",
-  paper: "a4",
-  yotsumeOrientation: "portrait",
-  yotsumeTwoUp: false,
+const settings: Settings = {
+  ...initialSettings,
   signatures: 1,
   sheets: 2,
   punchHolePlacement: "separate",
-  punchHoleSets: [{ offset: 12, groups: [{ holes: 4, weight: 1 }] }],
-  pattern: "dots",
+  punchHoleSets: [{ id: "set-1", offset: 12, groups: [{ id: "group-1", holes: 4, weight: 1 }] }],
   overlayPattern: "slant",
   borderWidth: 1,
-  numberVisibility: "both",
-  customPages: { 1: { type: "title" } },
+  customPages: { 1: { type: "title", title: "Title", subtitle: "Subtitle" } },
   pageAppearanceOverrides: {
     1: { pattern: "graph", borderWidth: 2, numberVisible: true, pageNumberText: "LEAK" },
   },

@@ -1,7 +1,13 @@
 import { ArrowDown, ArrowUp, BookOpen, Info, Plus, Trash2 } from "lucide-react"
 import type { ReactNode } from "react"
 
-import { CheckboxField, FieldRow, NumberField, SelectControl } from "@/components/form-controls"
+import {
+  CheckboxField,
+  Field,
+  FieldRow,
+  NumberField,
+  SelectControl,
+} from "@/components/form-controls"
 import { Button } from "@/components/ui/button"
 import { TabBar, TabBarTrigger, Tabs, TabsContent } from "@/components/ui/tabs"
 import { type Binding, isFoldedBinding } from "@/lib/imposition"
@@ -13,7 +19,7 @@ import type { Settings, SettingsUpdate } from "@/lib/settings"
 
 type BookSetupProps = {
   settings: Settings
-  document: ReturnType<typeof createNotebookDocument<Settings>>
+  document: ReturnType<typeof createNotebookDocument>
   onSettingsChange: SettingsUpdate
   onPunchHolePlacementChange: (placement: PunchHolePlacement) => void
 }
@@ -22,6 +28,60 @@ function moveItem<T>(items: T[], from: number, to: number) {
   const moved = [...items]
   moved.splice(to, 0, moved.splice(from, 1)[0])
   return moved
+}
+
+function ReorderControls({
+  index,
+  count,
+  upLabel,
+  downLabel,
+  removeLabel,
+  onMoveUp,
+  onMoveDown,
+  onRemove,
+}: {
+  index: number
+  count: number
+  upLabel: string
+  downLabel: string
+  removeLabel: string
+  onMoveUp: () => void
+  onMoveDown: () => void
+  onRemove: () => void
+}) {
+  return (
+    <div className="flex gap-1">
+      <Button
+        type="button"
+        variant="outline"
+        size="icon-sm"
+        aria-label={upLabel}
+        disabled={index === 0}
+        onClick={onMoveUp}
+      >
+        <ArrowUp />
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="icon-sm"
+        aria-label={downLabel}
+        disabled={index === count - 1}
+        onClick={onMoveDown}
+      >
+        <ArrowDown />
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="icon-sm"
+        aria-label={removeLabel}
+        onClick={onRemove}
+      >
+        <Trash2 />
+      </Button>
+    </div>
+  )
 }
 
 function PaperTab({ settings, document, onSettingsChange }: BookSetupProps) {
@@ -105,27 +165,25 @@ function BindingTab({ settings, document, onSettingsChange }: BookSetupProps) {
         />
         {settings.binding === "yotsume" && (
           <>
-            <div className="mt-3 grid gap-1.5">
-              <label className="text-sm font-medium" htmlFor="binding-edge">
-                Binding edge
-              </label>
-              <SelectControl
-                id="binding-edge"
-                value={settings.bindingEdge}
-                onChange={(value) => onSettingsChange("bindingEdge", value as BindingEdge)}
-                options={{ left: "Left", right: "Right" }}
-              />
+            <div className="mt-3">
+              <Field label="Binding edge" htmlFor="binding-edge">
+                <SelectControl
+                  id="binding-edge"
+                  value={settings.bindingEdge}
+                  onChange={(value) => onSettingsChange("bindingEdge", value as BindingEdge)}
+                  options={{ left: "Left", right: "Right" }}
+                />
+              </Field>
             </div>
-            <div className="mt-3 grid gap-1.5">
-              <label className="text-sm font-medium" htmlFor="page-orientation">
-                Page orientation
-              </label>
-              <SelectControl
-                id="page-orientation"
-                value={settings.yotsumeOrientation}
-                onChange={(value) => onSettingsChange("yotsumeOrientation", value as Orientation)}
-                options={{ portrait: "Portrait", landscape: "Landscape" }}
-              />
+            <div className="mt-3">
+              <Field label="Page orientation" htmlFor="page-orientation">
+                <SelectControl
+                  id="page-orientation"
+                  value={settings.yotsumeOrientation}
+                  onChange={(value) => onSettingsChange("yotsumeOrientation", value as Orientation)}
+                  options={{ portrait: "Portrait", landscape: "Landscape" }}
+                />
+              </Field>
             </div>
             <CheckboxField
               className="mt-3"
@@ -201,10 +259,11 @@ function HolesTab({
   return (
     <TabsContent value="holes" className="mt-0">
       <section className="border-b p-5">
-        <div className="grid gap-1.5">
-          <label className="text-sm font-medium" htmlFor="punch-indicators">
-            Punch indicators
-          </label>
+        <Field
+          label="Punch indicators"
+          htmlFor="punch-indicators"
+          hint="A separate guide is appended after the notebook without changing its pagination."
+        >
           <SelectControl
             id="punch-indicators"
             value={settings.punchHolePlacement}
@@ -217,10 +276,7 @@ function HolesTab({
               none: "None",
             }}
           />
-          <p className="text-2xs leading-4 text-muted-foreground">
-            A separate guide is appended after the notebook without changing its pagination.
-          </p>
-        </div>
+        </Field>
         <fieldset
           className={`mt-3 grid gap-3 ${settings.punchHolePlacement === "none" ? "opacity-45" : ""}`}
           disabled={settings.punchHolePlacement === "none"}
@@ -264,52 +320,31 @@ function HolesTab({
                     {settings.binding === "yotsume" ? `Set ${setIndex + 1}` : "Center fold"}
                   </span>
                   {settings.binding === "yotsume" && settings.punchHoleSets.length > 1 && (
-                    <div className="flex gap-1">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon-sm"
-                        aria-label={`Move hole set ${setIndex + 1} up`}
-                        disabled={setIndex === 0}
-                        onClick={() =>
-                          onSettingsChange(
-                            "punchHoleSets",
-                            moveItem(settings.punchHoleSets, setIndex, setIndex - 1),
-                          )
-                        }
-                      >
-                        <ArrowUp />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon-sm"
-                        aria-label={`Move hole set ${setIndex + 1} down`}
-                        disabled={setIndex === settings.punchHoleSets.length - 1}
-                        onClick={() =>
-                          onSettingsChange(
-                            "punchHoleSets",
-                            moveItem(settings.punchHoleSets, setIndex, setIndex + 1),
-                          )
-                        }
-                      >
-                        <ArrowDown />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon-sm"
-                        aria-label={`Remove hole set ${setIndex + 1}`}
-                        onClick={() =>
-                          onSettingsChange(
-                            "punchHoleSets",
-                            settings.punchHoleSets.filter((_, index) => index !== setIndex),
-                          )
-                        }
-                      >
-                        <Trash2 />
-                      </Button>
-                    </div>
+                    <ReorderControls
+                      index={setIndex}
+                      count={settings.punchHoleSets.length}
+                      upLabel={`Move hole set ${setIndex + 1} up`}
+                      downLabel={`Move hole set ${setIndex + 1} down`}
+                      removeLabel={`Remove hole set ${setIndex + 1}`}
+                      onMoveUp={() =>
+                        onSettingsChange(
+                          "punchHoleSets",
+                          moveItem(settings.punchHoleSets, setIndex, setIndex - 1),
+                        )
+                      }
+                      onMoveDown={() =>
+                        onSettingsChange(
+                          "punchHoleSets",
+                          moveItem(settings.punchHoleSets, setIndex, setIndex + 1),
+                        )
+                      }
+                      onRemove={() =>
+                        onSettingsChange(
+                          "punchHoleSets",
+                          settings.punchHoleSets.filter((_, index) => index !== setIndex),
+                        )
+                      }
+                    />
                   )}
                 </div>
                 {settings.binding === "yotsume" && (
@@ -339,48 +374,29 @@ function HolesTab({
                         max={1000}
                         onChange={(value) => updateHoleGroup(setIndex, groupIndex, "weight", value)}
                       />
-                      <div className="col-span-2 flex justify-end gap-1">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon-sm"
-                          aria-label={`Move group ${groupIndex + 1} up in set ${setIndex + 1}`}
-                          disabled={groupIndex === 0}
-                          onClick={() =>
+                      <div className="col-span-2 flex justify-end">
+                        <ReorderControls
+                          index={groupIndex}
+                          count={set.groups.length}
+                          upLabel={`Move group ${groupIndex + 1} up in set ${setIndex + 1}`}
+                          downLabel={`Move group ${groupIndex + 1} down in set ${setIndex + 1}`}
+                          removeLabel={`Remove group ${groupIndex + 1} from set ${setIndex + 1}`}
+                          onMoveUp={() =>
                             updateHoleSet(setIndex, {
                               groups: moveItem(set.groups, groupIndex, groupIndex - 1),
                             })
                           }
-                        >
-                          <ArrowUp />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon-sm"
-                          aria-label={`Move group ${groupIndex + 1} down in set ${setIndex + 1}`}
-                          disabled={groupIndex === set.groups.length - 1}
-                          onClick={() =>
+                          onMoveDown={() =>
                             updateHoleSet(setIndex, {
                               groups: moveItem(set.groups, groupIndex, groupIndex + 1),
                             })
                           }
-                        >
-                          <ArrowDown />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon-sm"
-                          aria-label={`Remove group ${groupIndex + 1} from set ${setIndex + 1}`}
-                          onClick={() =>
+                          onRemove={() =>
                             updateHoleSet(setIndex, {
                               groups: set.groups.filter((_, index) => index !== groupIndex),
                             })
                           }
-                        >
-                          <Trash2 />
-                        </Button>
+                        />
                       </div>
                     </div>
                   ))}

@@ -43,7 +43,7 @@ const PhysicalDesignPreview = lazy(() =>
 
 type PreviewProps = {
   settings: Settings
-  document: ReturnType<typeof createNotebookDocument<Settings>>
+  document: ReturnType<typeof createNotebookDocument>
   currentPage: number
   onCurrentPageChange: (page: number) => void
   previewPunchGuide: boolean
@@ -64,7 +64,7 @@ type PreviewContentProps = PreviewProps & {
   onOpeningChange: (opening: number) => void
   showPlan: boolean
   onShowPlanChange: (shown: boolean) => void
-  guidePreview: ReturnType<typeof createPunchGuideViewModel<Settings>>
+  guidePreview: ReturnType<typeof createPunchGuideViewModel>
 }
 
 function supportsPhysicalPreview() {

@@ -2,6 +2,28 @@ import { type ReactNode, useId } from "react"
 
 import { Input } from "@/components/ui/input"
 
+export function Field({
+  label,
+  htmlFor,
+  hint,
+  children,
+}: {
+  label: string
+  htmlFor: string
+  hint?: string
+  children: ReactNode
+}) {
+  return (
+    <div className="grid gap-1.5">
+      <label className="text-sm font-medium" htmlFor={htmlFor}>
+        {label}
+      </label>
+      {children}
+      {hint && <p className="text-2xs leading-4 text-muted-foreground">{hint}</p>}
+    </div>
+  )
+}
+
 export function NumberField({
   label,
   value,
@@ -22,10 +44,7 @@ export function NumberField({
   const id = useId()
 
   return (
-    <div className="grid gap-1.5">
-      <label className="text-sm font-medium" htmlFor={id}>
-        {label}
-      </label>
+    <Field label={label} htmlFor={id}>
       <Input
         id={id}
         type="number"
@@ -40,7 +59,7 @@ export function NumberField({
             onChange(Math.min(max, Math.max(min, step === 1 ? Math.round(value) : value)))
         }}
       />
-    </div>
+    </Field>
   )
 }
 
@@ -56,10 +75,7 @@ export function ColorField({
   const id = useId()
 
   return (
-    <div className="grid gap-1.5">
-      <label className="text-sm font-medium" htmlFor={id}>
-        {label}
-      </label>
+    <Field label={label} htmlFor={id}>
       <Input
         id={id}
         className="h-9 cursor-pointer p-1"
@@ -67,7 +83,7 @@ export function ColorField({
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-    </div>
+    </Field>
   )
 }
 

@@ -529,7 +529,7 @@ export function PhysicalDesignPreview({
   onOpeningChange,
 }: {
   settings: Settings
-  document: ReturnType<typeof createNotebookDocument<Settings>>
+  document: ReturnType<typeof createNotebookDocument>
   currentPage: number
   materialPreset: MaterialPresetId
   opening: number
@@ -550,6 +550,7 @@ export function PhysicalDesignPreview({
         binding: settings.binding,
         bindingEdge: settings.bindingEdge,
         sides: document.sides,
+        totalPages: document.totalPages,
         pageSize: document.pageSize,
         logicalPage: currentPage,
         materialPreset,
@@ -559,6 +560,7 @@ export function PhysicalDesignPreview({
       currentPage,
       document.pageSize,
       document.sides,
+      document.totalPages,
       materialPreset,
       settings.binding,
       settings.bindingEdge,

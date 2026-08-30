@@ -4,6 +4,7 @@ import { type ReactNode, useState } from "react"
 import {
   CheckboxField,
   ColorField,
+  Field,
   FieldRow,
   NumberField,
   SelectControl,
@@ -140,10 +141,11 @@ function StyleTab({ settings, onSettingsChange }: PagePropertiesProps) {
             blank: "Blank",
           }}
         />
-        <div className="grid gap-1.5">
-          <label className="text-sm font-medium" htmlFor="overlay-pattern">
-            Overlay pattern
-          </label>
+        <Field
+          label="Overlay pattern"
+          htmlFor="overlay-pattern"
+          hint="Slant lines are drawn over the page pattern using its spacing, width, and color."
+        >
           <SelectControl
             id="overlay-pattern"
             value={settings.overlayPattern}
@@ -153,10 +155,7 @@ function StyleTab({ settings, onSettingsChange }: PagePropertiesProps) {
             }
             options={{ none: "None", slant: "Slant lines" }}
           />
-          <p className="text-2xs leading-4 text-muted-foreground">
-            Slant lines are drawn over the page pattern using its spacing, width, and color.
-          </p>
-        </div>
+        </Field>
         {settings.pattern === "dots" && (
           <>
             <FieldRow>
@@ -298,10 +297,7 @@ function LayoutTab({
       <section className="grid gap-3 border-b p-4.5">
         <SectionTitle>Numbering</SectionTitle>
         <div className="grid grid-cols-2 gap-2">
-          <div className="grid gap-1.5">
-            <label className="text-sm font-medium" htmlFor="numbered-pages">
-              Pages
-            </label>
+          <Field label="Pages" htmlFor="numbered-pages">
             <SelectControl
               id="numbered-pages"
               value={settings.numberVisibility}
@@ -319,11 +315,8 @@ function LayoutTab({
                   : { both: "Shown", none: "Hidden" }
               }
             />
-          </div>
-          <div className="grid gap-1.5">
-            <label className="text-sm font-medium" htmlFor="page-number-position">
-              Position
-            </label>
+          </Field>
+          <Field label="Position" htmlFor="page-number-position">
             <SelectControl
               id="page-number-position"
               disabled={settings.numberVisibility === "none"}
@@ -333,13 +326,10 @@ function LayoutTab({
               }
               options={{ outer: "Outer corners", center: "Centered" }}
             />
-          </div>
+          </Field>
         </div>
         {scope === "page" && (
-          <div className="grid gap-1.5">
-            <label className="text-sm font-medium" htmlFor="displayed-page-number">
-              Displayed number
-            </label>
+          <Field label="Displayed number" htmlFor="displayed-page-number">
             <div className="flex gap-2">
               <Input
                 id="displayed-page-number"
@@ -365,14 +355,11 @@ function LayoutTab({
               Use up to 24 English letters, numbers, spaces, or punctuation. Leave blank for the
               automatic sequence; later pages are unchanged.
             </p>
-          </div>
+          </Field>
         )}
         <fieldset disabled={settings.numberVisibility === "none"} className="grid gap-3">
           <div className="grid gap-3">
-            <div className="grid gap-1.5">
-              <label className="text-sm font-medium" htmlFor="number-font">
-                Font
-              </label>
+            <Field label="Font" htmlFor="number-font">
               <Select
                 value={settings.numberFont}
                 onValueChange={(value) => onSettingsChange("numberFont", value)}
@@ -402,7 +389,7 @@ function LayoutTab({
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            </Field>
             <NumberField
               label="Size (pt)"
               value={settings.numberFontSize}
@@ -467,10 +454,7 @@ function PageTab({ settings, currentPage, onSettingsChange }: PagePropertiesProp
     <TabsContent value="page" className="mt-0">
       <section className="grid gap-3 border-b p-4.5">
         <SectionTitle>{`Page ${displayedPage(settings, currentPage)}`}</SectionTitle>
-        <div className="grid gap-1.5">
-          <label className="text-sm font-medium" htmlFor="page-template">
-            Template
-          </label>
+        <Field label="Template" htmlFor="page-template">
           <SelectControl
             id="page-template"
             value={customPage?.type ?? "default"}
@@ -482,7 +466,7 @@ function PageTab({ settings, currentPage, onSettingsChange }: PagePropertiesProp
             }}
             options={{ default: "Default page", title: "Title page", index: "Index page" }}
           />
-        </div>
+        </Field>
         {customPage?.type === "title" &&
           (
             [
@@ -490,10 +474,7 @@ function PageTab({ settings, currentPage, onSettingsChange }: PagePropertiesProp
               ["subtitle", "Subtitle", 60, "Name or date"],
             ] as const
           ).map(([field, label, maxLength, placeholder]) => (
-            <div className="grid gap-1.5" key={field}>
-              <label className="text-sm font-medium" htmlFor={`page-${field}`}>
-                {label}
-              </label>
+            <Field key={field} label={label} htmlFor={`page-${field}`}>
               <Input
                 id={`page-${field}`}
                 value={customPage[field]}
@@ -501,25 +482,23 @@ function PageTab({ settings, currentPage, onSettingsChange }: PagePropertiesProp
                 placeholder={placeholder}
                 onChange={(event) => setCustomPage({ ...customPage, [field]: event.target.value })}
               />
-            </div>
+            </Field>
           ))}
         {customPage?.type === "index" && (
           <>
-            <div className="grid gap-1.5">
-              <label className="text-sm font-medium" htmlFor="index-heading">
-                Heading
-              </label>
+            <Field label="Heading" htmlFor="index-heading">
               <Input
                 id="index-heading"
                 value={customPage.title}
                 maxLength={40}
                 onChange={(event) => setCustomPage({ ...customPage, title: event.target.value })}
               />
-            </div>
-            <div className="grid gap-1.5">
-              <label className="text-sm font-medium" htmlFor="index-entries">
-                Entries
-              </label>
+            </Field>
+            <Field
+              label="Entries"
+              htmlFor="index-entries"
+              hint="Use one entry per line. Put a | before its page number."
+            >
               <textarea
                 id="index-entries"
                 className="border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 min-h-32 w-full resize-y rounded-md border bg-card px-3 py-2 text-sm shadow-xs outline-none focus-visible:ring-3"
@@ -527,10 +506,7 @@ function PageTab({ settings, currentPage, onSettingsChange }: PagePropertiesProp
                 placeholder={"Projects | 4\nNotes | 12"}
                 onChange={(event) => setCustomPage({ ...customPage, entries: event.target.value })}
               />
-              <p className="text-2xs leading-4 text-muted-foreground">
-                Use one entry per line. Put a | before its page number.
-              </p>
-            </div>
+            </Field>
           </>
         )}
         <p className="text-2xs leading-4 text-muted-foreground">

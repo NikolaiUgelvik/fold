@@ -159,6 +159,7 @@ export function createPhysicalPreviewModel({
   binding,
   bindingEdge,
   sides,
+  totalPages,
   pageSize,
   logicalPage,
   materialPreset,
@@ -167,6 +168,7 @@ export function createPhysicalPreviewModel({
   binding: Binding
   bindingEdge: BindingEdge
   sides: ImpositionSide[]
+  totalPages: number
   pageSize: { width: number; height: number }
   logicalPage: number
   materialPreset: MaterialPresetId
@@ -197,9 +199,7 @@ export function createPhysicalPreviewModel({
     units,
     activeUnitIndex,
     selectedSurface: { ...selected, facingLogicalPage: facing.logicalPage },
-    readerPose: folded
-      ? getReaderPose(logicalPage, new Set(sides.flatMap((side) => side.pages)).size)
-      : undefined,
+    readerPose: folded ? getReaderPose(logicalPage, totalPages) : undefined,
     restingCounts: { left: activeUnitIndex, right: units.length - activeUnitIndex - 1 },
   }
 }

@@ -1,56 +1,24 @@
-import {
-  type Binding,
-  createImposition,
-  type ImpositionSide,
-  isFoldedBinding,
-} from "./imposition.ts"
+import { createImposition, type ImpositionSide, isFoldedBinding } from "./imposition.ts"
 import { getPageLayout } from "./page-layout.ts"
-import { getPaperSize, type Orientation, type PaperId } from "./paper.ts"
-import {
-  getActivePunchHoleSets,
-  type HoleSet,
-  type PunchHolePlacement,
-  showsPunchHoles,
-  usesSeparatePunchGuide,
-} from "./punch-holes.ts"
+import { getPaperSize } from "./paper.ts"
+import { getActivePunchHoleSets, showsPunchHoles, usesSeparatePunchGuide } from "./punch-holes.ts"
+import type { Settings } from "./settings.ts"
 
-export interface NotebookDocumentSettings {
-  binding: Binding
-  paper: PaperId
-  yotsumeOrientation: Orientation
-  yotsumeTwoUp: boolean
-  signatures: number
-  sheets: number
-  punchHolePlacement: PunchHolePlacement
-  punchHoleSets: HoleSet[]
-  pattern: "dots" | "lines" | "grid" | "graph" | "fourLine" | "slant" | "blank"
-  overlayPattern: "none" | "slant"
-  borderWidth: number
-  numberVisibility: "both" | "right" | "left" | "none"
-  customPages: Record<number, unknown>
-  pageAppearanceOverrides: Record<number, unknown>
-}
-
-function createPunchGuide<T extends NotebookDocumentSettings>(
-  settings: T,
-  sides: ImpositionSide[],
-) {
-  return {
-    settings: {
-      ...settings,
-      pattern: "blank",
-      overlayPattern: "none",
-      borderWidth: 0,
-      numberVisibility: "none",
-      customPages: {},
-      pageAppearanceOverrides: {},
-    } as T,
-    pages: sides[0]?.pages ?? [],
+function createPunchGuide(settings: Settings, sides: ImpositionSide[]) {
+  const guideSettings: Settings = {
+    ...settings,
+    pattern: "blank",
+    overlayPattern: "none",
+    borderWidth: 0,
+    numberVisibility: "none",
+    customPages: {},
+    pageAppearanceOverrides: {},
   }
+  return { settings: guideSettings, pages: sides[0]?.pages ?? [] }
 }
 
 export type NotebookDocumentConstructionSettings = Pick<
-  NotebookDocumentSettings,
+  Settings,
   "binding" | "paper" | "yotsumeOrientation" | "yotsumeTwoUp" | "signatures" | "sheets"
 >
 
@@ -80,8 +48,8 @@ export function createNotebookDocumentKernel(settings: NotebookDocumentConstruct
   }
 }
 
-export function createNotebookDocument<T extends NotebookDocumentSettings>(
-  settings: T,
+export function createNotebookDocument(
+  settings: Settings,
   kernel = createNotebookDocumentKernel(settings),
 ) {
   const separateGuide = usesSeparatePunchGuide(settings.punchHolePlacement)
@@ -91,7 +59,7 @@ export function createNotebookDocument<T extends NotebookDocumentSettings>(
     punchHoleSets: getActivePunchHoleSets(
       settings.punchHoleSets,
       isFoldedBinding(settings.binding),
-    ) as T["punchHoleSets"],
+    ),
     punchHolePages: new Set(
       kernel.sides
         .filter((side) => showsPunchHoles(settings.punchHolePlacement, side, settings.sheets))
@@ -102,8 +70,8 @@ export function createNotebookDocument<T extends NotebookDocumentSettings>(
   }
 }
 
-export function createPunchGuideViewModel<T extends NotebookDocumentSettings>(
-  document: ReturnType<typeof createNotebookDocument<T>>,
+export function createPunchGuideViewModel(
+  document: ReturnType<typeof createNotebookDocument>,
   shown: boolean,
 ) {
   const showGuide = Boolean(document.guide && shown)

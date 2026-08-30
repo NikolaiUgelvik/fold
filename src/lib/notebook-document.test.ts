@@ -1,38 +1,19 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import {
-  createNotebookDocument,
-  createNotebookDocumentKernel,
-  type NotebookDocumentSettings,
-} from "./notebook-document.ts"
+import { createNotebookDocument, createNotebookDocumentKernel } from "./notebook-document.ts"
+import { initialSettings, type Settings } from "./settings.ts"
 
-type TestSettings = NotebookDocumentSettings & {
-  bindingEdge: "left" | "right"
-  punchHoleEndInset: number
-  punchHoleDiameter: number
-}
-
-const base: TestSettings = {
-  binding: "coptic",
-  paper: "a4",
-  yotsumeOrientation: "portrait",
-  yotsumeTwoUp: false,
+const base: Settings = {
+  ...initialSettings,
   signatures: 2,
   sheets: 2,
   punchHolePlacement: "signature-front",
-  bindingEdge: "left",
-  punchHoleEndInset: 15,
   punchHoleDiameter: 4,
   punchHoleSets: [
-    { offset: 12, groups: [{ holes: 4, weight: 1 }] },
-    { offset: 20, groups: [{ holes: 2, weight: 1 }] },
+    { id: "set-1", offset: 12, groups: [{ id: "group-1", holes: 4, weight: 1 }] },
+    { id: "set-2", offset: 20, groups: [{ id: "group-2", holes: 2, weight: 1 }] },
   ],
-  pattern: "dots",
-  overlayPattern: "none",
   borderWidth: 1,
-  numberVisibility: "both",
-  customPages: {},
-  pageAppearanceOverrides: {},
 }
 
 test("creates folded notebook geometry and punch pages", () => {
@@ -74,7 +55,9 @@ test("reuses construction identities while deriving current punch and guide sett
       bindingEdge: "right" as const,
       punchHoleEndInset: 24,
       punchHoleDiameter: 6,
-      punchHoleSets: [{ offset: 30, groups: [{ holes: 3, weight: 1 }] }],
+      punchHoleSets: [
+        { id: "punch-set", offset: 30, groups: [{ id: "punch-group", holes: 3, weight: 1 }] },
+      ],
     },
     kernel,
   )
