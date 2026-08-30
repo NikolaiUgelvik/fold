@@ -190,6 +190,7 @@ function App() {
             document={document}
             onSettingsChange={updateSettings}
             onPunchHolePlacementChange={changePunchHolePlacement}
+            onLoadProject={setSettings}
           />
           <Preview
             settings={settings}

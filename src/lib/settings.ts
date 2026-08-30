@@ -4,8 +4,8 @@ import { displayedPage, type PageNumberVisibility, showsPageNumber } from "./pag
 import type { Orientation, PaperId } from "./paper.ts"
 import type { BindingEdge, HoleGroup, HoleSet, PunchHolePlacement } from "./punch-holes.ts"
 
-type IdentifiedHoleGroup = HoleGroup & { id: string }
-type IdentifiedHoleSet = Omit<HoleSet, "groups"> & {
+export type IdentifiedHoleGroup = HoleGroup & { id: string }
+export type IdentifiedHoleSet = Omit<HoleSet, "groups"> & {
   id: string
   groups: IdentifiedHoleGroup[]
 }
@@ -90,7 +90,6 @@ export interface Settings extends PageAppearance {
   bindingEdge: BindingEdge
   punchHoleEndInset: number
   punchHoleDiameter: number
-  // fallow-ignore-next-line private-type-leak -- Identified hole types are implementation details.
   punchHoleSets: IdentifiedHoleSet[]
   paper: PaperId
   previewPaperColor: string

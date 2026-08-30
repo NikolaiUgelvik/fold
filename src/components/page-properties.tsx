@@ -38,7 +38,7 @@ import {
 } from "@/lib/settings"
 import { tropheeColors } from "@/lib/trophee-colors"
 
-type PagePropertiesProps = {
+export type PagePropertiesProps = {
   settings: Settings
   currentPage: number
   pageSize: { width: number; height: number }
@@ -67,64 +67,254 @@ function SectionTitle({ children }: { children: string }) {
   )
 }
 
-function StyleTab({ settings, onSettingsChange }: PagePropertiesProps) {
-  function settingNumberField(
-    setting: NumberSettingKey,
-    label: string,
-    min: number,
-    max: number,
-    step?: number,
-  ) {
-    return (
-      <NumberField
-        label={label}
-        value={settings[setting]}
-        min={min}
-        max={max}
-        step={step}
-        onChange={(value) => onSettingsChange(setting, value)}
-      />
-    )
-  }
+type AppearanceSectionProps = {
+  settings: Settings
+  onSettingsChange: SettingsUpdate
+}
+
+function NumberSettingField({
+  setting,
+  label,
+  min,
+  max,
+  step,
+  settings,
+  onSettingsChange,
+}: {
+  setting: NumberSettingKey
+  label: string
+  min: number
+  max: number
+  step?: number
+  settings: Settings
+  onSettingsChange: SettingsUpdate
+}) {
   return (
-    <TabsContent value="style" className="mt-0">
-      <section className="grid gap-3 border-b p-4.5">
-        <SectionTitle>Preview paper color · Book-wide</SectionTitle>
-        <Select
-          value={settings.previewPaperColor}
-          onValueChange={(value) => onSettingsChange("previewPaperColor", value)}
-        >
-          <SelectTrigger className="w-full bg-card">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="#fffef9">
+    <NumberField
+      label={label}
+      value={settings[setting]}
+      min={min}
+      max={max}
+      step={step}
+      onChange={(value) => onSettingsChange(setting, value)}
+    />
+  )
+}
+
+function PaperColorSection({ settings, onSettingsChange }: AppearanceSectionProps) {
+  return (
+    <section className="grid gap-3 border-b p-4.5">
+      <SectionTitle>Preview paper color · Book-wide</SectionTitle>
+      <Select
+        value={settings.previewPaperColor}
+        onValueChange={(value) => onSettingsChange("previewPaperColor", value)}
+      >
+        <SelectTrigger className="w-full bg-card">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="#fffef9">
+            <span className="flex items-center gap-2">
+              <span className="size-3 rounded-full border" style={{ backgroundColor: "#fffef9" }} />
+              White (default)
+            </span>
+          </SelectItem>
+          {tropheeColors.map((color) => (
+            <SelectItem value={color.hex} key={color.hex}>
               <span className="flex items-center gap-2">
                 <span
                   className="size-3 rounded-full border"
-                  style={{ backgroundColor: "#fffef9" }}
+                  style={{ backgroundColor: color.hex }}
                 />
-                White (default)
+                {color.name}
               </span>
             </SelectItem>
-            {tropheeColors.map((color) => (
-              <SelectItem value={color.hex} key={color.hex}>
-                <span className="flex items-center gap-2">
-                  <span
-                    className="size-3 rounded-full border"
-                    style={{ backgroundColor: color.hex }}
-                  />
-                  {color.name}
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="text-2xs leading-4 text-muted-foreground">
-          Clairefontaine Trophée screen swatches. Preview only; PDF pages stay white.
-        </p>
-      </section>
+          ))}
+        </SelectContent>
+      </Select>
+      <p className="text-2xs leading-4 text-muted-foreground">
+        Clairefontaine Trophée screen swatches. Preview only; PDF pages stay white.
+      </p>
+    </section>
+  )
+}
 
+function patternSections(pattern: Settings["pattern"], overlayPattern: Settings["overlayPattern"]) {
+  return {
+    dots: pattern === "dots",
+    lines: pattern !== "dots" && pattern !== "blank",
+    fourLine: pattern === "fourLine",
+    slant: pattern === "slant" || overlayPattern === "slant",
+    graph: pattern === "graph",
+  }
+}
+
+function DotPatternSection({ settings, onSettingsChange }: AppearanceSectionProps) {
+  return (
+    <>
+      <FieldRow>
+        <NumberSettingField
+          setting="dotSize"
+          label="Dot size (mm)"
+          min={0.05}
+          max={2}
+          step={0.05}
+          settings={settings}
+          onSettingsChange={onSettingsChange}
+        />
+        <NumberSettingField
+          setting="dotSpacing"
+          label="Spacing (mm)"
+          min={2}
+          max={20}
+          step={0.5}
+          settings={settings}
+          onSettingsChange={onSettingsChange}
+        />
+      </FieldRow>
+      <FieldRow>
+        <NumberSettingField
+          setting="dotMajorEvery"
+          label="Major interval"
+          min={0}
+          max={20}
+          settings={settings}
+          onSettingsChange={onSettingsChange}
+        />
+        <NumberSettingField
+          setting="dotMajorSize"
+          label="Major size (mm)"
+          min={0.05}
+          max={4}
+          step={0.05}
+          settings={settings}
+          onSettingsChange={onSettingsChange}
+        />
+      </FieldRow>
+      <p className="text-2xs leading-4 text-muted-foreground">
+        Set the interval to 0 to disable major dots.
+      </p>
+      <ColorField
+        label="Dot color"
+        value={settings.dotColor}
+        onChange={(value) => onSettingsChange("dotColor", value)}
+      />
+    </>
+  )
+}
+
+function LinePatternSection({ settings, onSettingsChange }: AppearanceSectionProps) {
+  const graph = settings.pattern === "graph"
+  return (
+    <>
+      <FieldRow>
+        <NumberSettingField
+          setting="lineWidth"
+          label={graph ? "Thin width (mm)" : "Line width (mm)"}
+          min={0.05}
+          max={1}
+          step={0.05}
+          settings={settings}
+          onSettingsChange={onSettingsChange}
+        />
+        <NumberSettingField
+          setting="lineSpacing"
+          label={graph ? "Cell size (mm)" : "Spacing (mm)"}
+          min={3}
+          max={20}
+          step={0.5}
+          settings={settings}
+          onSettingsChange={onSettingsChange}
+        />
+      </FieldRow>
+      <ColorField
+        label={graph ? "Thin line color" : "Line color"}
+        value={settings.lineColor}
+        onChange={(value) => onSettingsChange("lineColor", value)}
+      />
+    </>
+  )
+}
+
+function FourLineSection({ settings, onSettingsChange }: AppearanceSectionProps) {
+  return (
+    <>
+      <FieldRow>
+        <NumberSettingField
+          setting="fourLineGap"
+          label="Group gap (mm)"
+          min={0}
+          max={20}
+          step={0.5}
+          settings={settings}
+          onSettingsChange={onSettingsChange}
+        />
+      </FieldRow>
+      <p className="text-2xs leading-4 text-muted-foreground">
+        Four lines per group, with a wider gap between groups for handwriting practice.
+      </p>
+    </>
+  )
+}
+
+function SlantAngleSection({ settings, onSettingsChange }: AppearanceSectionProps) {
+  return (
+    <FieldRow>
+      <NumberSettingField
+        setting="slantAngle"
+        label="Angle from vertical (°)"
+        min={5}
+        max={45}
+        step={1}
+        settings={settings}
+        onSettingsChange={onSettingsChange}
+      />
+    </FieldRow>
+  )
+}
+
+function GraphSection({ settings, onSettingsChange }: AppearanceSectionProps) {
+  return (
+    <>
+      <FieldRow>
+        <NumberSettingField
+          setting="graphMajorEvery"
+          label="Cells per block"
+          min={2}
+          max={20}
+          settings={settings}
+          onSettingsChange={onSettingsChange}
+        />
+        <NumberSettingField
+          setting="graphMajorLineWidth"
+          label="Thick width (mm)"
+          min={0.05}
+          max={2}
+          step={0.05}
+          settings={settings}
+          onSettingsChange={onSettingsChange}
+        />
+      </FieldRow>
+      <ColorField
+        label="Thick line color"
+        value={settings.graphMajorColor}
+        onChange={(value) => onSettingsChange("graphMajorColor", value)}
+      />
+      <CheckboxField
+        checked={settings.graphCompleteBlocks}
+        onChange={(checked) => onSettingsChange("graphCompleteBlocks", checked)}
+        title="Complete blocks only"
+        description="Remove partial cell groups and center the grid."
+      />
+    </>
+  )
+}
+
+function StyleTab({ settings, onSettingsChange }: PagePropertiesProps) {
+  const sections = patternSections(settings.pattern, settings.overlayPattern)
+  return (
+    <TabsContent value="style" className="mt-0">
+      <PaperColorSection settings={settings} onSettingsChange={onSettingsChange} />
       <section className="grid gap-3 border-b p-4.5">
         <SectionTitle>Page pattern</SectionTitle>
         <SelectControl
@@ -156,87 +346,19 @@ function StyleTab({ settings, onSettingsChange }: PagePropertiesProps) {
             options={{ none: "None", slant: "Slant lines" }}
           />
         </Field>
-        {settings.pattern === "dots" && (
-          <>
-            <FieldRow>
-              {settingNumberField("dotSize", "Dot size (mm)", 0.05, 2, 0.05)}
-              {settingNumberField("dotSpacing", "Spacing (mm)", 2, 20, 0.5)}
-            </FieldRow>
-            <FieldRow>
-              {settingNumberField("dotMajorEvery", "Major interval", 0, 20)}
-              {settingNumberField("dotMajorSize", "Major size (mm)", 0.05, 4, 0.05)}
-            </FieldRow>
-            <p className="text-2xs leading-4 text-muted-foreground">
-              Set the interval to 0 to disable major dots.
-            </p>
-            <ColorField
-              label="Dot color"
-              value={settings.dotColor}
-              onChange={(value) => onSettingsChange("dotColor", value)}
-            />
-          </>
+        {sections.dots && (
+          <DotPatternSection settings={settings} onSettingsChange={onSettingsChange} />
         )}
-        {(settings.pattern === "lines" ||
-          settings.pattern === "grid" ||
-          settings.pattern === "graph" ||
-          settings.pattern === "fourLine" ||
-          settings.pattern === "slant") && (
-          <>
-            <FieldRow>
-              {settingNumberField(
-                "lineWidth",
-                settings.pattern === "graph" ? "Thin width (mm)" : "Line width (mm)",
-                0.05,
-                1,
-                0.05,
-              )}
-              {settingNumberField(
-                "lineSpacing",
-                settings.pattern === "graph" ? "Cell size (mm)" : "Spacing (mm)",
-                3,
-                20,
-                0.5,
-              )}
-            </FieldRow>
-            <ColorField
-              label={settings.pattern === "graph" ? "Thin line color" : "Line color"}
-              value={settings.lineColor}
-              onChange={(value) => onSettingsChange("lineColor", value)}
-            />
-          </>
+        {sections.lines && (
+          <LinePatternSection settings={settings} onSettingsChange={onSettingsChange} />
         )}
-        {settings.pattern === "fourLine" && (
-          <>
-            <FieldRow>{settingNumberField("fourLineGap", "Group gap (mm)", 0, 20, 0.5)}</FieldRow>
-            <p className="text-2xs leading-4 text-muted-foreground">
-              Four lines per group, with a wider gap between groups for handwriting practice.
-            </p>
-          </>
+        {sections.fourLine && (
+          <FourLineSection settings={settings} onSettingsChange={onSettingsChange} />
         )}
-        {(settings.pattern === "slant" || settings.overlayPattern === "slant") && (
-          <FieldRow>
-            {settingNumberField("slantAngle", "Angle from vertical (°)", 5, 45, 1)}
-          </FieldRow>
+        {sections.slant && (
+          <SlantAngleSection settings={settings} onSettingsChange={onSettingsChange} />
         )}
-        {settings.pattern === "graph" && (
-          <>
-            <FieldRow>
-              {settingNumberField("graphMajorEvery", "Cells per block", 2, 20)}
-              {settingNumberField("graphMajorLineWidth", "Thick width (mm)", 0.05, 2, 0.05)}
-            </FieldRow>
-            <ColorField
-              label="Thick line color"
-              value={settings.graphMajorColor}
-              onChange={(value) => onSettingsChange("graphMajorColor", value)}
-            />
-            <CheckboxField
-              checked={settings.graphCompleteBlocks}
-              onChange={(checked) => onSettingsChange("graphCompleteBlocks", checked)}
-              title="Complete blocks only"
-              description="Remove partial cell groups and center the grid."
-            />
-          </>
-        )}
+        {sections.graph && <GraphSection settings={settings} onSettingsChange={onSettingsChange} />}
       </section>
     </TabsContent>
   )
@@ -625,7 +747,6 @@ function AppearanceScopeControl({
   )
 }
 
-// fallow-ignore-next-line private-type-leak -- Props are private to this feature module.
 export function PageProperties(props: PagePropertiesProps): ReactNode {
   const [activeTab, setActiveTab] = useState<"style" | "layout" | "page">("style")
   const [scope, setScope] = useState<AppearanceScope>("all")

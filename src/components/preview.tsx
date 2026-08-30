@@ -41,7 +41,7 @@ const PhysicalDesignPreview = lazy(() =>
   })),
 )
 
-type PreviewProps = {
+export type PreviewProps = {
   settings: Settings
   document: ReturnType<typeof createNotebookDocument>
   currentPage: number
@@ -127,6 +127,155 @@ const PageThumbnail = memo(function PageThumbnail({
   )
 })
 
+function ToolbarTitle({
+  showPunchGuide,
+  mode,
+  pageName,
+  paperSize,
+  pageSize,
+}: {
+  showPunchGuide: boolean
+  mode: PreviewMode
+  pageName: string
+  paperSize: { width: number; height: number }
+  pageSize: { width: number; height: number }
+}) {
+  const size = showPunchGuide ? paperSize : pageSize
+  const title = showPunchGuide
+    ? "Punch guide"
+    : mode === "physical"
+      ? "Physical Design Preview"
+      : "Live preview"
+  return (
+    <div>
+      <p className="text-xs font-semibold">{title}</p>
+      <p className="mt-0.5 text-caption text-muted-foreground">
+        {showPunchGuide ? "Separate sheet" : pageName} · {formatMillimeters(size.width)} ×{" "}
+        {formatMillimeters(size.height)} mm
+      </p>
+    </div>
+  )
+}
+
+function PreviewModeSwitch({
+  mode,
+  physicalPreviewSupported,
+  onModeChange,
+  onPreviewPunchGuideChange,
+}: {
+  mode: PreviewMode
+  physicalPreviewSupported: boolean
+  onModeChange: (mode: PreviewMode) => void
+  onPreviewPunchGuideChange: (shown: boolean) => void
+}) {
+  return (
+    <fieldset className="flex items-center gap-1" aria-label="Preview mode">
+      <Button
+        variant="outline"
+        className="h-8 px-3 text-xs"
+        aria-pressed={mode === "2d"}
+        onClick={() => onModeChange("2d")}
+      >
+        2D
+      </Button>
+      <Button
+        variant="outline"
+        className="h-8 px-3 text-xs"
+        aria-pressed={mode === "physical"}
+        aria-describedby={physicalPreviewSupported ? undefined : "physical-preview-unsupported"}
+        disabled={!physicalPreviewSupported}
+        onClick={() => {
+          onPreviewPunchGuideChange(false)
+          onModeChange("physical")
+        }}
+      >
+        Physical
+      </Button>
+      {!physicalPreviewSupported && (
+        <span id="physical-preview-unsupported" className="sr-only">
+          Physical Design Preview requires WebGL 2. The 2D preview is still available.
+        </span>
+      )}
+    </fieldset>
+  )
+}
+
+function ZoomControls({
+  zoom,
+  onZoomChange,
+}: {
+  zoom: number
+  onZoomChange: (zoom: number) => void
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <Button
+        variant="outline"
+        size="icon-sm"
+        aria-label="Zoom out"
+        disabled={zoom === 50}
+        onClick={() => onZoomChange(Math.max(50, zoom - 10))}
+      >
+        <Minus />
+      </Button>
+      <span className="w-10 text-center text-caption text-muted-foreground" aria-live="polite">
+        {zoom}%
+      </span>
+      <Button
+        variant="outline"
+        size="icon-sm"
+        aria-label="Zoom in"
+        disabled={zoom === 200}
+        onClick={() => onZoomChange(Math.min(200, zoom + 10))}
+      >
+        <Plus />
+      </Button>
+    </div>
+  )
+}
+
+function PageNavigator({
+  currentPage,
+  totalPages,
+  previousPage,
+  nextPage,
+  readerOrder,
+  onCurrentPageChange,
+}: {
+  currentPage: number
+  totalPages: number
+  previousPage: number
+  nextPage: number
+  readerOrder: boolean
+  onCurrentPageChange: (page: number) => void
+}) {
+  return (
+    <>
+      <span className="mr-1 hidden text-label text-muted-foreground sm:inline">
+        Page {currentPage} of {totalPages}
+      </span>
+      <Button
+        variant="outline"
+        size="icon-sm"
+        aria-label={readerOrder ? "Physical previous" : "Previous page"}
+        disabled={previousPage === currentPage}
+        onClick={() => onCurrentPageChange(previousPage)}
+      >
+        <ArrowLeft />
+      </Button>
+      <Button
+        variant="outline"
+        size="icon-sm"
+        aria-label={readerOrder ? "Physical next" : "Next page"}
+        disabled={nextPage === currentPage}
+        onClick={() => onCurrentPageChange(nextPage)}
+      >
+        <ArrowRight />
+      </Button>
+    </>
+  )
+}
+
 function PreviewToolbar(props: PreviewContentProps) {
   const {
     settings,
@@ -153,77 +302,21 @@ function PreviewToolbar(props: PreviewContentProps) {
     : Math.min(totalPages, currentPage + 1)
   return (
     <div className="flex h-15 shrink-0 items-center justify-between border-b bg-secondary px-5 text-secondary-foreground">
-      <div>
-        <p className="text-xs font-semibold">
-          {showPunchGuide
-            ? "Punch guide"
-            : mode === "physical"
-              ? "Physical Design Preview"
-              : "Live preview"}
-        </p>
-        <p className="mt-0.5 text-caption text-muted-foreground">
-          {showPunchGuide ? "Separate sheet" : pageName} ·{" "}
-          {formatMillimeters(showPunchGuide ? pageLayout.paper.width : pageSize.width)} ×{" "}
-          {formatMillimeters(showPunchGuide ? pageLayout.paper.height : pageSize.height)} mm
-        </p>
-      </div>
+      <ToolbarTitle
+        showPunchGuide={showPunchGuide}
+        mode={mode}
+        pageName={pageName}
+        paperSize={pageLayout.paper}
+        pageSize={pageSize}
+      />
       <div className="flex items-center gap-2">
-        <fieldset className="flex items-center gap-1" aria-label="Preview mode">
-          <Button
-            variant="outline"
-            className="h-8 px-3 text-xs"
-            aria-pressed={mode === "2d"}
-            onClick={() => onModeChange("2d")}
-          >
-            2D
-          </Button>
-          <Button
-            variant="outline"
-            className="h-8 px-3 text-xs"
-            aria-pressed={mode === "physical"}
-            aria-describedby={physicalPreviewSupported ? undefined : "physical-preview-unsupported"}
-            disabled={!physicalPreviewSupported}
-            onClick={() => {
-              onPreviewPunchGuideChange(false)
-              onModeChange("physical")
-            }}
-          >
-            Physical
-          </Button>
-          {!physicalPreviewSupported && (
-            <span id="physical-preview-unsupported" className="sr-only">
-              Physical Design Preview requires WebGL 2. The 2D preview is still available.
-            </span>
-          )}
-        </fieldset>
-        {mode === "2d" && (
-          <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="icon-sm"
-              aria-label="Zoom out"
-              disabled={zoom === 50}
-              onClick={() => onZoomChange(Math.max(50, zoom - 10))}
-            >
-              <Minus />
-            </Button>
-            <span
-              className="w-10 text-center text-caption text-muted-foreground"
-              aria-live="polite"
-            >
-              {zoom}%
-            </span>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              aria-label="Zoom in"
-              disabled={zoom === 200}
-              onClick={() => onZoomChange(Math.min(200, zoom + 10))}
-            >
-              <Plus />
-            </Button>
-          </div>
-        )}
+        <PreviewModeSwitch
+          mode={mode}
+          physicalPreviewSupported={physicalPreviewSupported}
+          onModeChange={onModeChange}
+          onPreviewPunchGuideChange={onPreviewPunchGuideChange}
+        />
+        {mode === "2d" && <ZoomControls zoom={zoom} onZoomChange={onZoomChange} />}
         {usesSeparatePunchGuide(settings.punchHolePlacement) && (
           <Button
             variant="outline"
@@ -234,29 +327,14 @@ function PreviewToolbar(props: PreviewContentProps) {
           </Button>
         )}
         {!showPunchGuide && (
-          <>
-            <span className="mr-1 hidden text-label text-muted-foreground sm:inline">
-              Page {currentPage} of {totalPages}
-            </span>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              aria-label={readerOrder ? "Physical previous" : "Previous page"}
-              disabled={previousPage === currentPage}
-              onClick={() => onCurrentPageChange(previousPage)}
-            >
-              <ArrowLeft />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              aria-label={readerOrder ? "Physical next" : "Next page"}
-              disabled={nextPage === currentPage}
-              onClick={() => onCurrentPageChange(nextPage)}
-            >
-              <ArrowRight />
-            </Button>
-          </>
+          <PageNavigator
+            currentPage={currentPage}
+            totalPages={totalPages}
+            previousPage={previousPage}
+            nextPage={nextPage}
+            readerOrder={readerOrder}
+            onCurrentPageChange={onCurrentPageChange}
+          />
         )}
       </div>
     </div>
@@ -441,7 +519,6 @@ function PreviewStrip(props: PreviewContentProps) {
   )
 }
 
-// fallow-ignore-next-line private-type-leak -- Props are private to this feature module.
 export function Preview(props: PreviewProps): ReactNode {
   const [physicalPreviewSupported] = useState(supportsPhysicalPreview)
   const [zoom, setZoom] = useState(100)

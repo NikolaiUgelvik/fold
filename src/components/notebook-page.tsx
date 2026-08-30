@@ -4,6 +4,84 @@ import { createPageSurface, getPageNumberAlignment, type PageMetrics } from "@/l
 import type { HoleSet } from "@/lib/punch-holes"
 import type { ResolvedPageAppearance, Settings } from "@/lib/settings"
 
+type PatternBounds = {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+function patternTile(settings: Settings, metrics: PageMetrics, pattern: Settings["pattern"]) {
+  const { pageSize, spacing, pageMargins, patternStartX, patternStartY } = metrics
+  const fullWidth = pattern === "lines" || pattern === "fourLine"
+  const slantHeight = spacing / Math.tan((settings.slantAngle * Math.PI) / 180)
+  if (pattern === "slant") {
+    return { x: patternStartX, y: patternStartY, width: spacing, height: slantHeight }
+  }
+  return {
+    x: fullWidth ? pageMargins.left : patternStartX - spacing / 2,
+    y: patternStartY - spacing / 2,
+    width: fullWidth ? pageSize.width : spacing,
+    height: pattern === "fourLine" ? spacing * 4 + settings.fourLineGap : spacing,
+  }
+}
+
+function PatternContent({
+  settings,
+  metrics,
+  pattern,
+  tile,
+}: {
+  settings: Settings
+  metrics: PageMetrics
+  pattern: Settings["pattern"]
+  tile: PatternBounds
+}) {
+  const { spacing, pageSize } = metrics
+  if (pattern === "dots") {
+    return (
+      <circle cx={spacing / 2} cy={spacing / 2} r={settings.dotSize / 2} fill={settings.dotColor} />
+    )
+  }
+  if (pattern === "slant") {
+    return (
+      <line
+        x1={0}
+        y1={tile.height}
+        x2={spacing}
+        y2={0}
+        stroke={settings.lineColor}
+        strokeWidth={settings.lineWidth}
+      />
+    )
+  }
+  const rows = pattern === "fourLine" ? [0, 1, 2, 3] : [0]
+  const crossLine = pattern === "grid" || pattern === "graph"
+  return (
+    <>
+      {rows.map((row) => (
+        <line
+          key={row}
+          x2={crossLine ? spacing : pageSize.width}
+          y1={spacing / 2 + row * spacing}
+          y2={spacing / 2 + row * spacing}
+          stroke={settings.lineColor}
+          strokeWidth={settings.lineWidth}
+        />
+      ))}
+      {crossLine && (
+        <line
+          x1={spacing / 2}
+          x2={spacing / 2}
+          y2={spacing}
+          stroke={settings.lineColor}
+          strokeWidth={settings.lineWidth}
+        />
+      )}
+    </>
+  )
+}
+
 function BasePattern({
   settings,
   metrics,
@@ -15,18 +93,7 @@ function BasePattern({
   patternId: string
   pattern: Settings["pattern"]
 }) {
-  const { pageSize, spacing, pageMargins, patternStartX, patternStartY } = metrics
-  const fullWidth = pattern === "lines" || pattern === "fourLine"
-  const slantHeight = spacing / Math.tan((settings.slantAngle * Math.PI) / 180)
-  const tile =
-    pattern === "slant"
-      ? { x: patternStartX, y: patternStartY, width: spacing, height: slantHeight }
-      : {
-          x: fullWidth ? pageMargins.left : patternStartX - spacing / 2,
-          y: patternStartY - spacing / 2,
-          width: fullWidth ? pageSize.width : spacing,
-          height: pattern === "fourLine" ? spacing * 4 + settings.fourLineGap : spacing,
-        }
+  const tile = patternTile(settings, metrics, pattern)
   return (
     <pattern
       id={patternId}
@@ -36,45 +103,7 @@ function BasePattern({
       width={tile.width}
       height={tile.height}
     >
-      {pattern === "dots" ? (
-        <circle
-          cx={spacing / 2}
-          cy={spacing / 2}
-          r={settings.dotSize / 2}
-          fill={settings.dotColor}
-        />
-      ) : pattern === "slant" ? (
-        <line
-          x1={0}
-          y1={tile.height}
-          x2={spacing}
-          y2={0}
-          stroke={settings.lineColor}
-          strokeWidth={settings.lineWidth}
-        />
-      ) : (
-        <>
-          {(pattern === "fourLine" ? [0, 1, 2, 3] : [0]).map((row) => (
-            <line
-              key={row}
-              x2={pattern === "grid" || pattern === "graph" ? spacing : pageSize.width}
-              y1={spacing / 2 + row * spacing}
-              y2={spacing / 2 + row * spacing}
-              stroke={settings.lineColor}
-              strokeWidth={settings.lineWidth}
-            />
-          ))}
-          {(pattern === "grid" || pattern === "graph") && (
-            <line
-              x1={spacing / 2}
-              x2={spacing / 2}
-              y2={spacing}
-              stroke={settings.lineColor}
-              strokeWidth={settings.lineWidth}
-            />
-          )}
-        </>
-      )}
+      <PatternContent settings={settings} metrics={metrics} pattern={pattern} tile={tile} />
     </pattern>
   )
 }
@@ -129,6 +158,39 @@ function MajorPatterns({
   )
 }
 
+function PatternOverlayRects({
+  settings,
+  hasBase,
+  patternBounds,
+  majorBounds,
+  slantOverlayBounds,
+  patternId,
+  majorPatternId,
+  slantOverlayId,
+}: {
+  settings: Settings
+  hasBase: boolean
+  patternBounds: PageMetrics["patternBounds"]
+  majorBounds: PageMetrics["majorBounds"]
+  slantOverlayBounds: PageMetrics["slantOverlayBounds"]
+  patternId: string
+  majorPatternId: string
+  slantOverlayId: string
+}) {
+  return (
+    <>
+      {hasBase && <rect {...patternBounds} fill={`url(#${patternId})`} />}
+      {settings.overlayPattern === "slant" && slantOverlayBounds && (
+        <rect {...slantOverlayBounds} fill={`url(#${slantOverlayId})`} />
+      )}
+      {settings.pattern === "dots" && settings.dotMajorEvery > 0 && (
+        <rect {...majorBounds} fill={`url(#${majorPatternId})`} />
+      )}
+      {settings.pattern === "graph" && <rect {...patternBounds} fill={`url(#${majorPatternId})`} />}
+    </>
+  )
+}
+
 function PagePattern({
   settings,
   metrics,
@@ -168,16 +230,16 @@ function PagePattern({
             )}
             <MajorPatterns settings={settings} metrics={metrics} majorPatternId={majorPatternId} />
           </defs>
-          {hasBase && <rect {...patternBounds} fill={`url(#${patternId})`} />}
-          {hasSlantOverlay && slantOverlayBounds && (
-            <rect {...slantOverlayBounds} fill={`url(#${slantOverlayId})`} />
-          )}
-          {settings.pattern === "dots" && settings.dotMajorEvery > 0 && (
-            <rect {...majorBounds} fill={`url(#${majorPatternId})`} />
-          )}
-          {settings.pattern === "graph" && (
-            <rect {...patternBounds} fill={`url(#${majorPatternId})`} />
-          )}
+          <PatternOverlayRects
+            settings={settings}
+            hasBase={hasBase}
+            patternBounds={patternBounds}
+            majorBounds={majorBounds}
+            slantOverlayBounds={slantOverlayBounds}
+            patternId={patternId}
+            majorPatternId={majorPatternId}
+            slantOverlayId={slantOverlayId}
+          />
         </>
       )}
     </>

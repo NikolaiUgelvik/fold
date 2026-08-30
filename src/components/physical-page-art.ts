@@ -1,6 +1,6 @@
 import * as THREE from "three"
 
-import type { PageSurface, PageTextRun } from "@/lib/page-surface"
+import type { PageMetrics, PageSurface, PageTextRun } from "@/lib/page-surface"
 
 const ATLAS_SIZE = 2048
 const ATLAS_PIXELS_PER_MILLIMETER = 8
@@ -223,6 +223,17 @@ function patternId(surface: PageSurface) {
   ]
 }
 
+function boundsAsVector4(bounds: { x: number; y: number; width: number; height: number } | null) {
+  return new THREE.Vector4(bounds?.x ?? 0, bounds?.y ?? 0, bounds?.width ?? 0, bounds?.height ?? 0)
+}
+
+function slantOverlayValue(
+  customPage: PageMetrics["customPage"],
+  overlayPattern: "none" | "slant",
+) {
+  return !customPage && overlayPattern === "slant" ? 1 : 0
+}
+
 function createPageArtMaterial(surface: PageSurface, flipX: boolean, renderSide: THREE.Side) {
   const { appearance, metrics } = surface
   const borderWidth = metrics.customPage ? 0 : appearance.borderWidth
@@ -242,33 +253,10 @@ function createPageArtMaterial(surface: PageSurface, flipX: boolean, renderSide:
       uPageSize: { value: new THREE.Vector2(metrics.pageSize.width, metrics.pageSize.height) },
       uFlipX: { value: flipX ? 1 : 0 },
       uPattern: { value: patternId(surface) },
-      uSlantOverlay: {
-        value: !metrics.customPage && appearance.overlayPattern === "slant" ? 1 : 0,
-      },
-      uOverlayBounds: {
-        value: new THREE.Vector4(
-          metrics.slantOverlayBounds?.x ?? 0,
-          metrics.slantOverlayBounds?.y ?? 0,
-          metrics.slantOverlayBounds?.width ?? 0,
-          metrics.slantOverlayBounds?.height ?? 0,
-        ),
-      },
-      uPatternBounds: {
-        value: new THREE.Vector4(
-          metrics.patternBounds.x,
-          metrics.patternBounds.y,
-          metrics.patternBounds.width,
-          metrics.patternBounds.height,
-        ),
-      },
-      uMajorBounds: {
-        value: new THREE.Vector4(
-          metrics.majorBounds.x,
-          metrics.majorBounds.y,
-          metrics.majorBounds.width,
-          metrics.majorBounds.height,
-        ),
-      },
+      uSlantOverlay: { value: slantOverlayValue(metrics.customPage, appearance.overlayPattern) },
+      uOverlayBounds: { value: boundsAsVector4(metrics.slantOverlayBounds) },
+      uPatternBounds: { value: boundsAsVector4(metrics.patternBounds) },
+      uMajorBounds: { value: boundsAsVector4(metrics.majorBounds) },
       uPatternStart: { value: new THREE.Vector2(metrics.patternStartX, metrics.patternStartY) },
       uSpacing: { value: metrics.spacing },
       uMajorSpacing: {

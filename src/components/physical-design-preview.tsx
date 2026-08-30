@@ -1,5 +1,5 @@
 import { Minus, Plus, RotateCcw, RotateCw } from "lucide-react"
-import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react"
+import { type KeyboardEvent, type RefObject, useEffect, useMemo, useRef, useState } from "react"
 import * as THREE from "three"
 import WebGL from "three/addons/capabilities/WebGL.js"
 import { OrbitControls } from "three/addons/controls/OrbitControls.js"
@@ -11,6 +11,7 @@ import {
   TextRunAtlas,
 } from "@/components/physical-page-art"
 import { Button } from "@/components/ui/button"
+import type { Binding } from "@/lib/imposition"
 import type { createNotebookDocument } from "@/lib/notebook-document"
 import { createPageSurface, type PageSurface } from "@/lib/page-surface"
 import {
@@ -443,6 +444,63 @@ function replacePageBlock(
   }
 }
 
+function pageFromKey(
+  key: string,
+  model: PhysicalPreviewModel,
+  currentPage: number,
+  totalPages: number,
+) {
+  switch (key) {
+    case "ArrowLeft":
+      return model.readerPose ? stepReaderPose(currentPage, totalPages, -1) : currentPage - 1
+    case "ArrowRight":
+      return model.readerPose ? stepReaderPose(currentPage, totalPages, 1) : currentPage + 1
+    case "Home":
+      return 1
+    case "End":
+      return totalPages
+    default:
+      return undefined
+  }
+}
+
+function resolvePendingTurn({
+  model,
+  previousReaderPoseAnchor,
+  currentPage,
+  previousPage,
+  wasTurning,
+}: {
+  model: PhysicalPreviewModel
+  previousReaderPoseAnchor: number | undefined
+  currentPage: number
+  previousPage: number
+  wasTurning: boolean
+}): -1 | 1 | undefined {
+  if (wasTurning) return undefined
+  const readerPoseDistance =
+    model.readerPose && previousReaderPoseAnchor !== undefined
+      ? model.readerPose.anchor - previousReaderPoseAnchor
+      : currentPage - previousPage
+  if (readerPoseDistance === 0) return undefined
+  if (Math.abs(readerPoseDistance) > (model.readerPose ? 2 : 1)) return undefined
+  return readerPoseDistance > 0 ? 1 : -1
+}
+
+function resolveRefitRange(
+  model: PhysicalPreviewModel,
+  binding: Binding,
+  materialPreset: MaterialPresetId,
+): readonly [number, number] {
+  if (model.readerPose?.kind === "spread" || !model.readerPose) {
+    return [
+      resolveOpeningDegrees(binding, materialPreset, 0),
+      resolveOpeningDegrees(binding, materialPreset, 100),
+    ]
+  }
+  return [0, 0]
+}
+
 type RendererState = {
   pageBlock: THREE.Group
   openingPivots: OpeningPivot[]
@@ -517,30 +575,14 @@ function useSurfaceTextReady(activeSurfaces: ActivePageSurfaces) {
   return readySurfaceKey === surfaceKey
 }
 
-// fallow-ignore-next-line complexity -- Direct Three.js lifecycle and preview controls share this boundary.
-export function PhysicalDesignPreview({
-  settings,
-  document,
-  currentPage,
-  materialPreset,
-  opening,
-  onCurrentPageChange,
-  onMaterialPresetChange,
-  onOpeningChange,
-}: {
-  settings: Settings
-  document: ReturnType<typeof createNotebookDocument>
-  currentPage: number
-  materialPreset: MaterialPresetId
-  opening: number
-  onCurrentPageChange: (page: number) => void
-  onMaterialPresetChange: (preset: MaterialPresetId) => void
-  onOpeningChange: (opening: number) => void
-}) {
-  const viewportRef = useRef<HTMLDivElement>(null)
-  const rendererStateRef = useRef<RendererState>(null)
-  const previousPageRef = useRef(currentPage)
-  const pendingTurnRef = useRef<-1 | 1 | undefined>(undefined)
+function usePhysicalPreviewModel(
+  settings: Settings,
+  document: ReturnType<typeof createNotebookDocument>,
+  currentPage: number,
+  materialPreset: MaterialPresetId,
+  opening: number,
+  rendererStateRef: RefObject<RendererState | null>,
+) {
   const reducedMotion = usePrefersReducedMotion()
   const [animateTurns, setAnimateTurns] = useState(() => !reducedMotion)
   const [status, setStatus] = useState<"ready" | "unsupported" | "context-lost">("ready")
@@ -566,7 +608,9 @@ export function PhysicalDesignPreview({
       settings.bindingEdge,
     ],
   )
-  const previousReaderPoseAnchorRef = useRef(model.readerPose?.anchor)
+  useEffect(() => {
+    if (reducedMotion) setAnimateTurns(false)
+  }, [reducedMotion])
   const activeSurfaces = useActivePageSurfaces(
     settings,
     model,
@@ -576,30 +620,187 @@ export function PhysicalDesignPreview({
   const includeText = useSurfaceTextReady(activeSurfaces)
   const openingDegrees = resolveOpeningDegrees(settings.binding, materialPreset, opening)
   const effectiveOpeningDegrees = model.readerPose?.kind === "spread" ? openingDegrees : 0
+  useEffect(() => {
+    const rendererState = rendererStateRef.current
+    if (!rendererState) return
+    rendererState.updateOpening(effectiveOpeningDegrees)
+  }, [effectiveOpeningDegrees, rendererStateRef])
+  return {
+    model,
+    status,
+    setStatus,
+    animateTurns,
+    setAnimateTurns,
+    activeSurfaces,
+    includeText,
+    effectiveOpeningDegrees,
+  }
+}
+
+function PreviewControls({
+  rendererStateRef,
+  materialPreset,
+  opening,
+  animateTurns,
+  onMaterialPresetChange,
+  onOpeningChange,
+  onAnimateTurnsChange,
+}: {
+  rendererStateRef: RefObject<RendererState | null>
+  materialPreset: MaterialPresetId
+  opening: number
+  animateTurns: boolean
+  onMaterialPresetChange: (preset: MaterialPresetId) => void
+  onOpeningChange: (opening: number) => void
+  onAnimateTurnsChange: (animated: boolean) => void
+}) {
+  return (
+    <div className="absolute right-4 bottom-4 z-10 flex flex-wrap items-end justify-end gap-3 rounded-md border border-white/20 bg-primary/80 p-3 text-primary-foreground shadow-lg backdrop-blur-sm">
+      <fieldset className="flex gap-1" aria-label="Camera controls">
+        <Button
+          variant="outline"
+          size="icon-sm"
+          className="border-white/20 bg-primary"
+          aria-label="Rotate camera left"
+          onClick={() => rendererStateRef.current?.rotateCamera(CAMERA_ROTATION_STEP)}
+        >
+          <RotateCcw />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon-sm"
+          className="border-white/20 bg-primary"
+          aria-label="Rotate camera right"
+          onClick={() => rendererStateRef.current?.rotateCamera(-CAMERA_ROTATION_STEP)}
+        >
+          <RotateCw />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon-sm"
+          className="border-white/20 bg-primary"
+          aria-label="Zoom out"
+          onClick={() => rendererStateRef.current?.zoomCamera(false)}
+        >
+          <Minus />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon-sm"
+          className="border-white/20 bg-primary"
+          aria-label="Zoom in"
+          onClick={() => rendererStateRef.current?.zoomCamera(true)}
+        >
+          <Plus />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon-sm"
+          className="border-white/20 bg-primary"
+          aria-label="Reset camera"
+          onClick={() => rendererStateRef.current?.resetCamera()}
+        >
+          <RotateCcw />
+        </Button>
+      </fieldset>
+      <fieldset className="flex items-end gap-3" aria-label="Physical preview controls">
+        <div className="grid gap-1 text-caption font-semibold">
+          <span>Material</span>
+          <SelectControl
+            value={materialPreset}
+            onChange={(preset) => onMaterialPresetChange(preset as MaterialPresetId)}
+            options={materialPresetOptions}
+            ariaLabel="Material Preset"
+            className="h-8 w-32 border-white/20 bg-primary text-xs"
+          />
+        </div>
+        <label className="grid gap-1 text-caption font-semibold">
+          Opening {Math.round(opening)}%
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={opening}
+            className="h-8 w-28 accent-ring"
+            aria-label="Opening"
+            onChange={(event) => onOpeningChange(event.currentTarget.valueAsNumber)}
+          />
+        </label>
+        <label className="flex items-center gap-1 text-caption font-semibold">
+          <input
+            type="checkbox"
+            checked={animateTurns}
+            className="accent-ring"
+            onChange={(event) => onAnimateTurnsChange(event.currentTarget.checked)}
+          />
+          Animate turns
+        </label>
+      </fieldset>
+    </div>
+  )
+}
+
+function PreviewStatusMessage({ status }: { status: "unsupported" | "context-lost" }) {
+  return (
+    <p
+      className="relative z-10 m-auto max-w-56 text-center text-caption text-primary-foreground/75"
+      role="status"
+    >
+      {status === "unsupported"
+        ? "Physical Design Preview requires WebGL 2. Use the 2D preview instead."
+        : "Physical Design Preview lost its graphics context. Switch to 2D preview and try again."}
+    </p>
+  )
+}
+
+export function PhysicalDesignPreview({
+  settings,
+  document,
+  currentPage,
+  materialPreset,
+  opening,
+  onCurrentPageChange,
+  onMaterialPresetChange,
+  onOpeningChange,
+}: {
+  settings: Settings
+  document: ReturnType<typeof createNotebookDocument>
+  currentPage: number
+  materialPreset: MaterialPresetId
+  opening: number
+  onCurrentPageChange: (page: number) => void
+  onMaterialPresetChange: (preset: MaterialPresetId) => void
+  onOpeningChange: (opening: number) => void
+}) {
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const rendererStateRef = useRef<RendererState>(null)
+  const previousPageRef = useRef(currentPage)
+  const pendingTurnRef = useRef<-1 | 1 | undefined>(undefined)
+  const {
+    model,
+    status,
+    setStatus,
+    animateTurns,
+    setAnimateTurns,
+    activeSurfaces,
+    includeText,
+    effectiveOpeningDegrees,
+  } = usePhysicalPreviewModel(
+    settings,
+    document,
+    currentPage,
+    materialPreset,
+    opening,
+    rendererStateRef,
+  )
+  const previousReaderPoseAnchorRef = useRef(model.readerPose?.anchor)
   const openingDegreesRef = useRef(effectiveOpeningDegrees)
   openingDegreesRef.current = effectiveOpeningDegrees
-
-  useEffect(() => {
-    if (reducedMotion) setAnimateTurns(false)
-  }, [reducedMotion])
 
   function handlePreviewKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (!(event.target instanceof HTMLCanvasElement)) return
     if (event.altKey || event.ctrlKey || event.metaKey) return
-    const page =
-      event.key === "ArrowLeft"
-        ? model.readerPose
-          ? stepReaderPose(currentPage, document.totalPages, -1)
-          : currentPage - 1
-        : event.key === "ArrowRight"
-          ? model.readerPose
-            ? stepReaderPose(currentPage, document.totalPages, 1)
-            : currentPage + 1
-          : event.key === "Home"
-            ? 1
-            : event.key === "End"
-              ? document.totalPages
-              : undefined
+    const page = pageFromKey(event.key, model, currentPage, document.totalPages)
     if (page === undefined) return
     event.preventDefault()
     onCurrentPageChange(Math.min(document.totalPages, Math.max(1, page)))
@@ -789,31 +990,23 @@ export function PhysicalDesignPreview({
       renderer.dispose()
       renderer.domElement.remove()
     }
-  }, [])
+  }, [setStatus])
 
   useEffect(() => {
     const rendererState = rendererStateRef.current
     if (!rendererState) return
     const previousPage = previousPageRef.current
-    const pageChanged = currentPage !== previousPage
-    const previousReaderPoseAnchor = previousReaderPoseAnchorRef.current
-    const readerPoseDistance =
-      model.readerPose && previousReaderPoseAnchor !== undefined
-        ? model.readerPose.anchor - previousReaderPoseAnchor
-        : undefined
-    const turnDistance = readerPoseDistance ?? currentPage - previousPage
     const wasTurning = rendererState.cancelTurn()
-    if (!animateTurns) pendingTurnRef.current = undefined
-    if (pageChanged) {
-      pendingTurnRef.current =
-        animateTurns &&
-        !wasTurning &&
-        Math.abs(turnDistance) <= (model.readerPose ? 2 : 1) &&
-        turnDistance !== 0
-          ? turnDistance > 0
-            ? 1
-            : -1
-          : undefined
+    if (!animateTurns) {
+      pendingTurnRef.current = undefined
+    } else if (currentPage !== previousPage) {
+      pendingTurnRef.current = resolvePendingTurn({
+        model,
+        previousReaderPoseAnchor: previousReaderPoseAnchorRef.current,
+        currentPage,
+        previousPage,
+        wasTurning,
+      })
     }
     replacePageBlock(
       rendererState.pageBlock,
@@ -825,14 +1018,7 @@ export function PhysicalDesignPreview({
       settings.previewPaperColor,
     )
     rendererState.updateOpening(openingDegreesRef.current)
-    rendererState.refit(
-      model.readerPose?.kind === "spread" || !model.readerPose
-        ? [
-            resolveOpeningDegrees(settings.binding, materialPreset, 0),
-            resolveOpeningDegrees(settings.binding, materialPreset, 100),
-          ]
-        : [0, 0],
-    )
+    rendererState.refit(resolveRefitRange(model, settings.binding, materialPreset))
     const pendingTurn = pendingTurnRef.current
     if (animateTurns && includeText && pendingTurn) {
       rendererState.animateTurn(pendingTurn)
@@ -851,12 +1037,6 @@ export function PhysicalDesignPreview({
     settings.previewPaperColor,
   ])
 
-  useEffect(() => {
-    const rendererState = rendererStateRef.current
-    if (!rendererState) return
-    rendererState.updateOpening(effectiveOpeningDegrees)
-  }, [effectiveOpeningDegrees])
-
   return (
     <section
       ref={viewportRef}
@@ -865,97 +1045,17 @@ export function PhysicalDesignPreview({
       onKeyDown={handlePreviewKeyDown}
     >
       {status === "ready" ? (
-        <div className="absolute right-4 bottom-4 z-10 flex flex-wrap items-end justify-end gap-3 rounded-md border border-white/20 bg-primary/80 p-3 text-primary-foreground shadow-lg backdrop-blur-sm">
-          <fieldset className="flex gap-1" aria-label="Camera controls">
-            <Button
-              variant="outline"
-              size="icon-sm"
-              className="border-white/20 bg-primary"
-              aria-label="Rotate camera left"
-              onClick={() => rendererStateRef.current?.rotateCamera(CAMERA_ROTATION_STEP)}
-            >
-              <RotateCcw />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              className="border-white/20 bg-primary"
-              aria-label="Rotate camera right"
-              onClick={() => rendererStateRef.current?.rotateCamera(-CAMERA_ROTATION_STEP)}
-            >
-              <RotateCw />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              className="border-white/20 bg-primary"
-              aria-label="Zoom out"
-              onClick={() => rendererStateRef.current?.zoomCamera(false)}
-            >
-              <Minus />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              className="border-white/20 bg-primary"
-              aria-label="Zoom in"
-              onClick={() => rendererStateRef.current?.zoomCamera(true)}
-            >
-              <Plus />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              className="border-white/20 bg-primary"
-              aria-label="Reset camera"
-              onClick={() => rendererStateRef.current?.resetCamera()}
-            >
-              <RotateCcw />
-            </Button>
-          </fieldset>
-          <fieldset className="flex items-end gap-3" aria-label="Physical preview controls">
-            <div className="grid gap-1 text-caption font-semibold">
-              <span>Material</span>
-              <SelectControl
-                value={materialPreset}
-                onChange={(preset) => onMaterialPresetChange(preset as MaterialPresetId)}
-                options={materialPresetOptions}
-                ariaLabel="Material Preset"
-                className="h-8 w-32 border-white/20 bg-primary text-xs"
-              />
-            </div>
-            <label className="grid gap-1 text-caption font-semibold">
-              Opening {Math.round(opening)}%
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={opening}
-                className="h-8 w-28 accent-ring"
-                aria-label="Opening"
-                onChange={(event) => onOpeningChange(event.currentTarget.valueAsNumber)}
-              />
-            </label>
-            <label className="flex items-center gap-1 text-caption font-semibold">
-              <input
-                type="checkbox"
-                checked={animateTurns}
-                className="accent-ring"
-                onChange={(event) => setAnimateTurns(event.currentTarget.checked)}
-              />
-              Animate turns
-            </label>
-          </fieldset>
-        </div>
+        <PreviewControls
+          rendererStateRef={rendererStateRef}
+          materialPreset={materialPreset}
+          opening={opening}
+          animateTurns={animateTurns}
+          onMaterialPresetChange={onMaterialPresetChange}
+          onOpeningChange={onOpeningChange}
+          onAnimateTurnsChange={setAnimateTurns}
+        />
       ) : (
-        <p
-          className="relative z-10 m-auto max-w-56 text-center text-caption text-primary-foreground/75"
-          role="status"
-        >
-          {status === "unsupported"
-            ? "Physical Design Preview requires WebGL 2. Use the 2D preview instead."
-            : "Physical Design Preview lost its graphics context. Switch to 2D preview and try again."}
-        </p>
+        <PreviewStatusMessage status={status} />
       )}
       <p className="sr-only" aria-live="polite">
         Physical preview page {currentPage} of {document.totalPages}

@@ -8,6 +8,7 @@ import {
   NumberField,
   SelectControl,
 } from "@/components/form-controls"
+import { ProjectsPanel } from "@/components/projects"
 import { Button } from "@/components/ui/button"
 import { TabBar, TabBarTrigger, Tabs, TabsContent } from "@/components/ui/tabs"
 import { type Binding, isFoldedBinding } from "@/lib/imposition"
@@ -17,11 +18,12 @@ import { formatMillimeters, type Orientation, paperSizes } from "@/lib/paper"
 import type { BindingEdge, HoleGroup, PunchHolePlacement } from "@/lib/punch-holes"
 import type { Settings, SettingsUpdate } from "@/lib/settings"
 
-type BookSetupProps = {
+export type BookSetupProps = {
   settings: Settings
   document: ReturnType<typeof createNotebookDocument>
   onSettingsChange: SettingsUpdate
   onPunchHolePlacementChange: (placement: PunchHolePlacement) => void
+  onLoadProject: (settings: Settings) => void
 }
 
 function moveItem<T>(items: T[], from: number, to: number) {
@@ -446,7 +448,14 @@ function HolesTab({
   )
 }
 
-// fallow-ignore-next-line private-type-leak -- Props are private to this feature module.
+function ProjectsTab({ settings, onLoadProject }: BookSetupProps) {
+  return (
+    <TabsContent value="projects" className="mt-0">
+      <ProjectsPanel settings={settings} onLoad={onLoadProject} />
+    </TabsContent>
+  )
+}
+
 export function BookSetup(props: BookSetupProps): ReactNode {
   const { sides, totalPages, guideSides } = props.document
   return (
@@ -460,10 +469,13 @@ export function BookSetup(props: BookSetupProps): ReactNode {
 
       <Tabs defaultValue="binding" className="gap-0">
         <TabBar>
+          <TabBarTrigger value="projects">PROJECT</TabBarTrigger>
           <TabBarTrigger value="binding">BINDING</TabBarTrigger>
           <TabBarTrigger value="paper">PAPER</TabBarTrigger>
           <TabBarTrigger value="holes">HOLES</TabBarTrigger>
         </TabBar>
+
+        <ProjectsTab {...props} />
 
         <PaperTab {...props} />
 
