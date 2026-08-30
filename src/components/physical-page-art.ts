@@ -26,6 +26,8 @@ out vec4 outColor;
 uniform vec2 uPageSize;
 uniform int uFlipX;
 uniform int uPattern;
+uniform int uSlantOverlay;
+uniform vec4 uOverlayBounds;
 uniform vec4 uPatternBounds;
 uniform vec4 uMajorBounds;
 uniform vec2 uPatternStart;
@@ -35,6 +37,8 @@ uniform float uDotRadius;
 uniform float uMajorDotRadius;
 uniform float uLineWidth;
 uniform float uMajorLineWidth;
+uniform float uFourLineGap;
+uniform float uSlantAngle;
 uniform vec3 uDotColor;
 uniform vec3 uLineColor;
 uniform vec3 uGraphMajorColor;
@@ -78,6 +82,22 @@ float decode16(vec2 bytes) {
   return (bytes.x * 255.0 * 256.0 + bytes.y * 255.0) / 65535.0;
 }
 
+float fourLineDistance(vec2 point) {
+  float period = uSpacing * 4.0 + uFourLineGap;
+  float d = mod(point.y - uPatternStart.y, period);
+  return d < uSpacing * 4.0
+    ? abs(fract(d / uSpacing) - 0.5) * uSpacing
+    : min(d - uSpacing * 3.5, period + uSpacing * 0.5 - d);
+}
+
+float slantDistance(vec2 point) {
+  float angle = radians(uSlantAngle);
+  vec2 normal = vec2(cos(angle), sin(angle));
+  float perpSpacing = uSpacing * cos(angle);
+  float proj = dot(point - uPatternStart, normal);
+  return abs(fract(proj / perpSpacing + 0.5) - 0.5) * perpSpacing;
+}
+
 void main() {
   vec2 point = vec2(
     (uFlipX == 1 ? 1.0 - vUv.x : vUv.x) * uPageSize.x,
@@ -107,7 +127,7 @@ void main() {
     }
   }
 
-  if (patternArea > 0.0 && uPattern >= 2) {
+  if (patternArea > 0.0 && uPattern >= 2 && uPattern <= 4) {
     float horizontal = lineMask(
       nearestGridDistance(point.y, uPatternStart.y, uSpacing),
       uLineWidth
@@ -123,6 +143,18 @@ void main() {
       );
       over(painted, uGraphMajorColor, major);
     }
+  }
+
+  if (patternArea > 0.0 && uPattern == 5) {
+    over(painted, uLineColor, lineMask(fourLineDistance(point), uLineWidth));
+  }
+
+  if (patternArea > 0.0 && uPattern == 6) {
+    over(painted, uLineColor, lineMask(slantDistance(point), uLineWidth));
+  }
+
+  if (uSlantOverlay == 1 && insideRect(point, uOverlayBounds) > 0.0) {
+    over(painted, uLineColor, lineMask(slantDistance(point), uLineWidth));
   }
 
   if (uBorderWidth > 0.0 && insideRect(point, uBorderRect) > 0.0) {
@@ -186,7 +218,9 @@ function createCoordinateTexture(coordinates: number[][]) {
 
 function patternId(surface: PageSurface) {
   if (surface.metrics.customPage) return 0
-  return { blank: 0, dots: 1, lines: 2, grid: 3, graph: 4 }[surface.appearance.pattern]
+  return { blank: 0, dots: 1, lines: 2, grid: 3, graph: 4, fourLine: 5, slant: 6 }[
+    surface.appearance.pattern
+  ]
 }
 
 function createPageArtMaterial(surface: PageSurface, flipX: boolean, renderSide: THREE.Side) {
@@ -208,6 +242,17 @@ function createPageArtMaterial(surface: PageSurface, flipX: boolean, renderSide:
       uPageSize: { value: new THREE.Vector2(metrics.pageSize.width, metrics.pageSize.height) },
       uFlipX: { value: flipX ? 1 : 0 },
       uPattern: { value: patternId(surface) },
+      uSlantOverlay: {
+        value: !metrics.customPage && appearance.overlayPattern === "slant" ? 1 : 0,
+      },
+      uOverlayBounds: {
+        value: new THREE.Vector4(
+          metrics.slantOverlayBounds?.x ?? 0,
+          metrics.slantOverlayBounds?.y ?? 0,
+          metrics.slantOverlayBounds?.width ?? 0,
+          metrics.slantOverlayBounds?.height ?? 0,
+        ),
+      },
       uPatternBounds: {
         value: new THREE.Vector4(
           metrics.patternBounds.x,
@@ -234,6 +279,8 @@ function createPageArtMaterial(surface: PageSurface, flipX: boolean, renderSide:
       uMajorDotRadius: { value: appearance.dotMajorSize / 2 },
       uLineWidth: { value: appearance.lineWidth },
       uMajorLineWidth: { value: appearance.graphMajorLineWidth },
+      uFourLineGap: { value: appearance.fourLineGap },
+      uSlantAngle: { value: appearance.slantAngle },
       uDotColor: { value: new THREE.Color(appearance.dotColor) },
       uLineColor: { value: new THREE.Color(appearance.lineColor) },
       uGraphMajorColor: { value: new THREE.Color(appearance.graphMajorColor) },

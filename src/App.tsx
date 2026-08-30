@@ -34,6 +34,8 @@ const documentNames: Record<Settings["pattern"], string> = {
   lines: "Ruled notebook",
   grid: "Square-grid notebook",
   graph: "Graph-paper notebook",
+  fourLine: "Four-line notebook",
+  slant: "Slant-line notebook",
   blank: "Blank notebook",
 }
 

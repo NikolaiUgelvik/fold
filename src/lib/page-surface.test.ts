@@ -8,6 +8,36 @@ function makeSettings(settings: Partial<Settings> = {}): Settings {
   return { ...initialSettings, pageAppearanceOverrides: {}, customPages: {}, ...settings }
 }
 
+test("four-line and slant patterns span the full content width with line metrics", () => {
+  for (const pattern of ["fourLine", "slant"] as const) {
+    const surface = createPageSurface(makeSettings({ pattern }), 1, [], false)
+    const { patternBounds, pageMargins, contentWidth, spacing, patternRadius } = surface.metrics
+    assert.equal(spacing, 5)
+    assert.equal(patternRadius, 0.1)
+    assert.equal(patternBounds.x, pageMargins.left)
+    assert.equal(patternBounds.width, contentWidth)
+  }
+})
+
+test("slant overlay bounds are full width without changing the base pattern bounds", () => {
+  for (const pattern of ["lines", "fourLine", "dots"] as const) {
+    const withOverlay = createPageSurface(
+      makeSettings({ pattern, overlayPattern: "slant" }),
+      1,
+      [],
+      false,
+    )
+    const without = createPageSurface(makeSettings({ pattern }), 1, [], false)
+    assert.deepEqual(withOverlay.metrics.patternBounds, without.metrics.patternBounds)
+    assert.equal(withOverlay.metrics.slantOverlayBounds?.x, without.metrics.pageMargins.left)
+    assert.equal(withOverlay.metrics.slantOverlayBounds?.width, without.metrics.contentWidth)
+    assert.equal(
+      withOverlay.metrics.slantOverlayBounds?.height,
+      without.metrics.centeredPatternBounds.height,
+    )
+  }
+})
+
 test("derives the shared physical and SVG page art from resolved page settings", () => {
   const surface = createPageSurface(
     makeSettings({

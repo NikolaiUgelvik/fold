@@ -11,7 +11,7 @@ type IdentifiedHoleSet = Omit<HoleSet, "groups"> & {
 }
 
 export interface PageAppearance {
-  pattern: "dots" | "lines" | "grid" | "graph" | "blank"
+  pattern: "dots" | "lines" | "grid" | "graph" | "fourLine" | "slant" | "blank"
   dotSize: number
   dotSpacing: number
   dotMajorEvery: number
@@ -20,6 +20,9 @@ export interface PageAppearance {
   lineWidth: number
   lineSpacing: number
   lineColor: string
+  fourLineGap: number
+  slantAngle: number
+  overlayPattern: "none" | "slant"
   graphMajorEvery: number
   graphMajorLineWidth: number
   graphMajorColor: string
@@ -59,6 +62,9 @@ const pageAppearanceKeyMap = {
   lineWidth: true,
   lineSpacing: true,
   lineColor: true,
+  fourLineGap: true,
+  slantAngle: true,
+  overlayPattern: true,
   graphMajorEvery: true,
   graphMajorLineWidth: true,
   graphMajorColor: true,
@@ -207,8 +213,11 @@ export const initialSettings: Settings = {
   dotMajorSize: 0.7,
   dotColor: "#aeb4b6",
   lineWidth: 0.2,
-  lineSpacing: 7,
+  lineSpacing: 5,
   lineColor: "#aeb9c4",
+  fourLineGap: 5,
+  slantAngle: 15,
+  overlayPattern: "none",
   graphMajorEvery: 5,
   graphMajorLineWidth: 0.4,
   graphMajorColor: "#8295a8",

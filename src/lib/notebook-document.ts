@@ -23,7 +23,8 @@ export interface NotebookDocumentSettings {
   sheets: number
   punchHolePlacement: PunchHolePlacement
   punchHoleSets: HoleSet[]
-  pattern: "dots" | "lines" | "grid" | "graph" | "blank"
+  pattern: "dots" | "lines" | "grid" | "graph" | "fourLine" | "slant" | "blank"
+  overlayPattern: "none" | "slant"
   borderWidth: number
   numberVisibility: "both" | "right" | "left" | "none"
   customPages: Record<number, unknown>
@@ -38,6 +39,7 @@ function createPunchGuide<T extends NotebookDocumentSettings>(
     settings: {
       ...settings,
       pattern: "blank",
+      overlayPattern: "none",
       borderWidth: 0,
       numberVisibility: "none",
       customPages: {},

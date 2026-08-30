@@ -135,9 +135,28 @@ function StyleTab({ settings, onSettingsChange }: PagePropertiesProps) {
             lines: "Ruled lines",
             grid: "Square grid",
             graph: "Graph paper",
+            fourLine: "Four-line",
+            slant: "Slant lines",
             blank: "Blank",
           }}
         />
+        <div className="grid gap-1.5">
+          <label className="text-sm font-medium" htmlFor="overlay-pattern">
+            Overlay pattern
+          </label>
+          <SelectControl
+            id="overlay-pattern"
+            value={settings.overlayPattern}
+            ariaLabel="Overlay pattern"
+            onChange={(value) =>
+              onSettingsChange("overlayPattern", value as Settings["overlayPattern"])
+            }
+            options={{ none: "None", slant: "Slant lines" }}
+          />
+          <p className="text-2xs leading-4 text-muted-foreground">
+            Slant lines are drawn over the page pattern using its spacing, width, and color.
+          </p>
+        </div>
         {settings.pattern === "dots" && (
           <>
             <FieldRow>
@@ -160,7 +179,9 @@ function StyleTab({ settings, onSettingsChange }: PagePropertiesProps) {
         )}
         {(settings.pattern === "lines" ||
           settings.pattern === "grid" ||
-          settings.pattern === "graph") && (
+          settings.pattern === "graph" ||
+          settings.pattern === "fourLine" ||
+          settings.pattern === "slant") && (
           <>
             <FieldRow>
               {settingNumberField(
@@ -184,6 +205,19 @@ function StyleTab({ settings, onSettingsChange }: PagePropertiesProps) {
               onChange={(value) => onSettingsChange("lineColor", value)}
             />
           </>
+        )}
+        {settings.pattern === "fourLine" && (
+          <>
+            <FieldRow>{settingNumberField("fourLineGap", "Group gap (mm)", 0, 20, 0.5)}</FieldRow>
+            <p className="text-2xs leading-4 text-muted-foreground">
+              Four lines per group, with a wider gap between groups for handwriting practice.
+            </p>
+          </>
+        )}
+        {(settings.pattern === "slant" || settings.overlayPattern === "slant") && (
+          <FieldRow>
+            {settingNumberField("slantAngle", "Angle from vertical (°)", 5, 45, 1)}
+          </FieldRow>
         )}
         {settings.pattern === "graph" && (
           <>

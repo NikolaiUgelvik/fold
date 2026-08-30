@@ -28,6 +28,7 @@ const base: TestSettings = {
     { offset: 20, groups: [{ holes: 2, weight: 1 }] },
   ],
   pattern: "dots",
+  overlayPattern: "none",
   borderWidth: 1,
   numberVisibility: "both",
   customPages: {},

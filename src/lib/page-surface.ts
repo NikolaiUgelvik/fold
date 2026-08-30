@@ -80,10 +80,16 @@ function getPageMetrics(settings: Settings, logicalPage: number) {
   )
   const patternStartX = centeredPatternBounds.x + patternRadius
   const patternStartY = centeredPatternBounds.y + patternRadius
+  const fullContentBounds = {
+    ...centeredPatternBounds,
+    x: pageMargins.left,
+    width: contentWidth,
+  }
   const patternBounds =
-    settings.pattern === "lines"
-      ? { ...centeredPatternBounds, x: pageMargins.left, width: contentWidth }
+    settings.pattern === "lines" || settings.pattern === "fourLine" || settings.pattern === "slant"
+      ? fullContentBounds
       : centeredPatternBounds
+  const slantOverlayBounds = settings.overlayPattern === "slant" ? fullContentBounds : null
   const majorRadius = settings.dotMajorSize / 2
   const majorBounds = getMajorBounds(
     settings,
@@ -114,6 +120,7 @@ function getPageMetrics(settings: Settings, logicalPage: number) {
     patternStartX,
     patternStartY,
     patternBounds,
+    slantOverlayBounds,
     majorRadius,
     majorBounds,
     borderX,

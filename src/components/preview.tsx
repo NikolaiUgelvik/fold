@@ -9,8 +9,11 @@ import {
   Grip,
   Heading1,
   List,
+  type LucideIcon,
   Minus,
   Plus,
+  Rows4,
+  Slash,
 } from "lucide-react"
 import {
   type CSSProperties,
@@ -68,11 +71,16 @@ function supportsPhysicalPreview() {
   return Boolean(document.createElement("canvas").getContext("webgl2"))
 }
 
-const pageTypeIcons = {
+const pageTypeIcons: Record<
+  Settings["pattern"] | "title" | "index",
+  { icon: LucideIcon; label: string }
+> = {
   dots: { icon: Grip, label: "dotted page" },
   lines: { icon: AlignJustify, label: "lined page" },
   grid: { icon: Grid2X2, label: "grid page" },
   graph: { icon: Grid3X3, label: "graph paper page" },
+  fourLine: { icon: Rows4, label: "four-line page" },
+  slant: { icon: Slash, label: "slant-line page" },
   blank: { icon: File, label: "blank page" },
   title: { icon: Heading1, label: "title page" },
   index: { icon: List, label: "index page" },

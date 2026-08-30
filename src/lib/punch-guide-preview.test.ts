@@ -16,6 +16,7 @@ const settings: NotebookDocumentSettings = {
   punchHolePlacement: "separate",
   punchHoleSets: [{ offset: 12, groups: [{ holes: 4, weight: 1 }] }],
   pattern: "dots",
+  overlayPattern: "slant",
   borderWidth: 1,
   numberVisibility: "both",
   customPages: { 1: { type: "title" } },
@@ -35,6 +36,7 @@ test("models the separate punch guide preview", () => {
   assert.equal(shown.ariaLabel, "Punch guide preview")
   assert.deepEqual(shown.guide?.pages, [8, 1])
   assert.equal(shown.guide?.settings.pattern, "blank")
+  assert.equal(shown.guide?.settings.overlayPattern, "none")
   assert.equal(shown.guide?.settings.borderWidth, 0)
   assert.equal(shown.guide?.settings.numberVisibility, "none")
   assert.deepEqual(shown.guide?.settings.customPages, {})
