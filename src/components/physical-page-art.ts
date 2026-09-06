@@ -589,17 +589,18 @@ export function createPageArtGroup({
   art.add(pageArt)
 
   if (!includeText) return art
-  const textMaterial = new THREE.MeshBasicMaterial({
-    map: atlas.texture,
-    transparent: true,
-    depthTest: false,
-    depthWrite: false,
-    side: renderSide,
-    toneMapped: false,
-  })
+  let textMaterial: THREE.MeshBasicMaterial | undefined
   for (const run of surface.textRuns) {
     const entry = atlas.get(surface.logicalPage, run.id)
     if (!entry) continue
+    textMaterial ??= new THREE.MeshBasicMaterial({
+      map: atlas.texture,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+      side: renderSide,
+      toneMapped: false,
+    })
     art.add(
       createTextMesh(
         entry,

@@ -53,6 +53,15 @@ export type PhysicalPreviewUnit = {
   surfaces: PhysicalPageSurface[]
 }
 
+export type FoldedPreviewLeaf = {
+  signature: number
+  sheet: number
+  pages: [number, number]
+  stackSide: "left" | "right"
+  stackIndex: number
+  signatureOffset: number
+}
+
 export type ReaderPose =
   | { kind: "front" | "back"; anchor: number; pages: [number] }
   | { kind: "spread"; anchor: number; pages: [number, number] }
@@ -64,6 +73,7 @@ export type PhysicalPreviewModel = {
   materialPreset: (typeof materialPresets)[MaterialPresetId]
   openingDegrees: number
   units: PhysicalPreviewUnit[]
+  foldedLeaves: FoldedPreviewLeaf[]
   activeUnitIndex: number
   selectedSurface: PhysicalPageSurface & { facingLogicalPage: number }
   readerPose?: ReaderPose
@@ -76,10 +86,17 @@ function groupSidesBySheet(sides: ImpositionSide[]) {
     Map<number, Partial<Record<ImpositionSide["side"], ImpositionSide>>>
   >()
   for (const side of sides) {
-    const signature = sheets.get(side.signature) ?? new Map()
-    sheets.set(side.signature, signature)
-    const sheet = signature.get(side.sheet) ?? {}
-    signature.set(side.sheet, { ...sheet, [side.side]: side })
+    let signature = sheets.get(side.signature)
+    if (!signature) {
+      signature = new Map()
+      sheets.set(side.signature, signature)
+    }
+    let sheet = signature.get(side.sheet)
+    if (!sheet) {
+      sheet = {}
+      signature.set(side.sheet, sheet)
+    }
+    sheet[side.side] = side
   }
   return sheets
 }
@@ -101,6 +118,67 @@ function createFoldedUnits(sides: ImpositionSide[]) {
     }
   }
   return units
+}
+
+function createFoldedLeaves(units: PhysicalPreviewUnit[]) {
+  const foldedLeaves: FoldedPreviewLeaf[] = []
+  for (const unit of units) {
+    for (const front of unit.surfaces) {
+      if (front.side !== "front") continue
+      // Duplex imposition reverses the two printed positions across a physical leaf.
+      const back = unit.surfaces.find(
+        (surface) => surface.side === "back" && surface.position === 1 - front.position,
+      )
+      if (!back) throw new RangeError(`Sheet ${unit.sheet} has mismatched sides`)
+      foldedLeaves.push({
+        signature: unit.signature,
+        sheet: unit.sheet,
+        pages:
+          front.logicalPage % 2 === 1
+            ? [front.logicalPage, back.logicalPage]
+            : [back.logicalPage, front.logicalPage],
+        stackSide: "right",
+        stackIndex: 0,
+        signatureOffset: 0,
+      })
+    }
+  }
+  foldedLeaves.sort((left, right) => left.pages[0] - right.pages[0])
+  return foldedLeaves
+}
+
+function createFoldedPlacement(units: PhysicalPreviewUnit[], pose: ReaderPose) {
+  const foldedLeaves = createFoldedLeaves(units)
+  const leftCount =
+    pose.kind === "front" ? 0 : pose.kind === "back" ? foldedLeaves.length : pose.anchor / 2
+
+  let signatureOffset = 0
+  for (let index = leftCount - 1; index >= 0; index -= 1) {
+    const leaf = foldedLeaves[index]
+    if (index < leftCount - 1 && leaf.signature !== foldedLeaves[index + 1].signature) {
+      signatureOffset += 1
+    }
+    leaf.stackSide = "left"
+    leaf.stackIndex = leftCount - index - 1
+    leaf.signatureOffset = signatureOffset
+  }
+  signatureOffset = 0
+  for (let index = leftCount; index < foldedLeaves.length; index += 1) {
+    const leaf = foldedLeaves[index]
+    if (index > leftCount && leaf.signature !== foldedLeaves[index - 1].signature) {
+      signatureOffset += 1
+    }
+    leaf.stackIndex = index - leftCount
+    leaf.signatureOffset = signatureOffset
+  }
+
+  return {
+    foldedLeaves,
+    restingCounts: {
+      left: Math.max(0, leftCount - 1),
+      right: Math.max(0, foldedLeaves.length - leftCount - 1),
+    },
+  }
 }
 
 function createLeafUnits(sides: ImpositionSide[]) {
@@ -190,6 +268,9 @@ export function createPhysicalPreviewModel({
     ) ?? activeUnit.surfaces.find((surface) => surface.side !== selected.side)
   if (!facing) throw new RangeError(`Logical page ${logicalPage} has no facing surface`)
 
+  const readerPose = folded ? getReaderPose(logicalPage, totalPages) : undefined
+  const foldedPlacement = readerPose ? createFoldedPlacement(units, readerPose) : undefined
+
   return {
     construction: folded ? "page-block" : "leaf-stack",
     bindingEdge,
@@ -197,9 +278,13 @@ export function createPhysicalPreviewModel({
     materialPreset: materialPresets[materialPreset],
     openingDegrees: resolveOpeningDegrees(binding, materialPreset, opening),
     units,
+    foldedLeaves: foldedPlacement?.foldedLeaves ?? [],
     activeUnitIndex,
     selectedSurface: { ...selected, facingLogicalPage: facing.logicalPage },
-    readerPose: folded ? getReaderPose(logicalPage, totalPages) : undefined,
-    restingCounts: { left: activeUnitIndex, right: units.length - activeUnitIndex - 1 },
+    readerPose,
+    restingCounts: foldedPlacement?.restingCounts ?? {
+      left: activeUnitIndex,
+      right: units.length - activeUnitIndex - 1,
+    },
   }
 }

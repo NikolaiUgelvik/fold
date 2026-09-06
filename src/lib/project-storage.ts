@@ -305,8 +305,9 @@ export function saveProject(
     settings: structuredClone(settings),
   }
   const store = readStore(storage)
+  const normalizedName = trimmed.toLowerCase()
   const existingIndex = store.projects.findIndex(
-    (project) => project.name.toLowerCase() === trimmed.toLowerCase(),
+    (project) => project.name.toLowerCase() === normalizedName,
   )
   if (existingIndex >= 0) store.projects[existingIndex] = entry
   else store.projects.push(entry)
@@ -324,8 +325,9 @@ export function loadProject(
   name: string,
   storage: Storage = globalThis.localStorage,
 ): ProjectResult<Settings> {
+  const normalizedName = name.trim().toLowerCase()
   const project = readStore(storage).projects.find(
-    (candidate) => candidate.name.toLowerCase() === name.trim().toLowerCase(),
+    (candidate) => candidate.name.toLowerCase() === normalizedName,
   )
   if (!project) return { ok: false, error: "Project not found." }
 
@@ -338,8 +340,9 @@ export function loadProject(
 
 export function deleteProject(name: string, storage: Storage = globalThis.localStorage): boolean {
   const store = readStore(storage)
+  const normalizedName = name.trim().toLowerCase()
   const index = store.projects.findIndex(
-    (candidate) => candidate.name.toLowerCase() === name.trim().toLowerCase(),
+    (candidate) => candidate.name.toLowerCase() === normalizedName,
   )
   if (index < 0) return false
   store.projects.splice(index, 1)

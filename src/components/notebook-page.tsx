@@ -1,4 +1,4 @@
-import { useId } from "react"
+import { memo, useId } from "react"
 
 import { createPageSurface, getPageNumberAlignment, type PageMetrics } from "@/lib/page-surface"
 import type { HoleSet } from "@/lib/punch-holes"
@@ -370,7 +370,7 @@ function PageNumber({
   )
 }
 
-export function PageSvg({
+export const PageSvg = memo(function PageSvg({
   settings,
   punchHoleSets,
   logicalPage,
@@ -426,4 +426,4 @@ export function PageSvg({
       <PageNumber settings={pageSettings} metrics={metrics} />
     </svg>
   )
-}
+})

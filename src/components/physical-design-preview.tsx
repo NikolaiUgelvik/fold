@@ -16,6 +16,7 @@ import type { createNotebookDocument } from "@/lib/notebook-document"
 import { createPageSurface, type PageSurface } from "@/lib/page-surface"
 import {
   createPhysicalPreviewModel,
+  type FoldedPreviewLeaf,
   type MaterialPresetId,
   materialPresets,
   type PhysicalPreviewModel,
@@ -133,62 +134,10 @@ function addRestingVolume({
   parent.add(pivot)
 }
 
-function addRestingFoldedSheet({
-  parent,
-  sheet,
-  sheetIndex,
-  sheetCount,
-  width,
-  height,
-  depthPerSheet,
-  model,
-  openingPivots,
-  leftRotation,
-  rightRotation,
-}: {
-  parent: THREE.Group
-  sheet: number
-  sheetIndex: number
-  sheetCount: number
-  width: number
-  height: number
-  depthPerSheet: number
-  model: PhysicalPreviewModel
-  openingPivots: OpeningPivot[]
-  leftRotation: (openingDegrees: number) => number
-  rightRotation: (openingDegrees: number) => number
-}) {
-  const foldedSheet = new THREE.Group()
-  foldedSheet.name = `Folded Sheet ${sheet}`
-  foldedSheet.position.z = (sheetIndex - (sheetCount - 1) / 2) * depthPerSheet
-  addRestingVolume({
-    parent: foldedSheet,
-    side: -1,
-    sheetCount: 1,
-    width,
-    height,
-    depthPerSheet,
-    model,
-    openingPivots,
-    rotation: leftRotation,
-  })
-  addRestingVolume({
-    parent: foldedSheet,
-    side: 1,
-    sheetCount: 1,
-    width,
-    height,
-    depthPerSheet,
-    model,
-    openingPivots,
-    rotation: rightRotation,
-  })
-  parent.add(foldedSheet)
-}
-
 type PageArtLayer = {
   surface: PageSurface
   renderSide: THREE.Side
+  flipX?: boolean
 }
 
 function createActivePageMesh(
@@ -200,6 +149,7 @@ function createActivePageMesh(
   atlas: TextRunAtlas,
   includeText: boolean,
   paperColor: string,
+  face: -1 | 1 = 1,
 ) {
   const geometry = new THREE.PlaneGeometry(width, height, 32, 2)
   const positions = geometry.getAttribute("position")
@@ -207,7 +157,7 @@ function createActivePageMesh(
     (1 - model.materialPreset.stiffness) * (1 - model.materialPreset.creaseSet * 0.5) * 0.045
   for (let index = 0; index < positions.count; index += 1) {
     const distanceFromSpine = (positions.getX(index) + width / 2) / width
-    positions.setZ(index, Math.sin(distanceFromSpine * Math.PI) * curveDepth)
+    positions.setZ(index, Math.sin(distanceFromSpine * Math.PI) * curveDepth * face)
   }
   positions.needsUpdate = true
   geometry.computeVertexNormals()
@@ -225,9 +175,10 @@ function createActivePageMesh(
   const millimetersToWorld = height / layers[0].surface.metrics.pageSize.height
   for (const layer of layers) {
     const flipX =
-      side === 1
+      layer.flipX ??
+      (side === 1
         ? layer.surface.metrics.bindingEdge === "right"
-        : layer.surface.metrics.bindingEdge === "left"
+        : layer.surface.metrics.bindingEdge === "left")
     page.add(
       createPageArtGroup({
         surface: layer.surface,
@@ -249,6 +200,8 @@ type ActivePageSurfaces = {
   left: PageSurface
   right: PageSurface
   visible: PageSurface[]
+  artwork: PageSurface[]
+  byPage: Map<number, PageSurface>
 }
 
 function getPageDimensions(model: PhysicalPreviewModel) {
@@ -257,6 +210,70 @@ function getPageDimensions(model: PhysicalPreviewModel) {
     width: PAGE_HEIGHT * (width / height),
     millimetersToWorld: PAGE_HEIGHT / height,
   }
+}
+
+function foldedLeafRotation(
+  side: FoldedPreviewLeaf["stackSide"],
+  pose: NonNullable<PhysicalPreviewModel["readerPose"]>["kind"],
+  openingDegrees: number,
+) {
+  if (pose === "front") return 0
+  if (pose === "back") return -Math.PI
+  const halfClosedAngle = THREE.MathUtils.degToRad(180 - openingDegrees) / 2
+  return side === "left" ? -Math.PI + halfClosedAngle : -halfClosedAngle
+}
+
+function createFoldedLeafBody(
+  leaf: FoldedPreviewLeaf,
+  dimensions: { width: number; depth: number; signatureGap: number },
+  model: PhysicalPreviewModel,
+  surfaces: ActivePageSurfaces,
+  atlas: TextRunAtlas,
+  includeText: boolean,
+  paperColor: string,
+) {
+  const { width, depth, signatureGap } = dimensions
+  const face = leaf.stackSide === "left" ? -1 : 1
+  const body = new THREE.Group()
+  body.position.z = -face * (leaf.stackIndex * depth + leaf.signatureOffset * signatureGap)
+  const volume = new THREE.Mesh(
+    createProfiledVolumeGeometry(width, PAGE_HEIGHT, depth, model.materialPreset.profile),
+    createPaperMaterial(model),
+  )
+  volume.name = "Leaf paper volume"
+  volume.position.set(
+    width / 2,
+    0,
+    -face * (depth / 2 + model.materialPreset.profile * depth * 0.4 + RESTING_VOLUME_EPSILON),
+  )
+  volume.scale.z = face
+  volume.receiveShadow = true
+  body.add(volume)
+
+  // The adjacent leaf supplies the page uncovered during a turn. Its paper
+  // stays in the stack; only artwork exposure changes as the turning leaf lands.
+  if (leaf.stackIndex > 1) return body
+  const front = surfaces.byPage.get(leaf.pages[0])
+  const back = surfaces.byPage.get(leaf.pages[1])
+  if (!front || !back) throw new RangeError(`Leaf ${leaf.pages[0]} has incomplete artwork`)
+  const page = createActivePageMesh(
+    width,
+    PAGE_HEIGHT,
+    model,
+    1,
+    [
+      { surface: front, renderSide: THREE.FrontSide, flipX: false },
+      { surface: back, renderSide: THREE.BackSide, flipX: true },
+    ],
+    atlas,
+    includeText,
+    paperColor,
+    face,
+  )
+  page.name = `Leaf ${leaf.pages.join("–")} page surfaces`
+  page.visible = leaf.stackIndex === 0
+  body.add(page)
+  return body
 }
 
 function createPageBlock(
@@ -268,92 +285,59 @@ function createPageBlock(
   includeText: boolean,
   paperColor: string,
 ) {
-  const { width, millimetersToWorld } = getPageDimensions(model)
-  const sheetDepth = model.materialPreset.thickness * millimetersToWorld
-  const signatureGap = model.materialPreset.signatureGap * millimetersToWorld
-  const leftRotation = (openingDegrees: number) =>
-    THREE.MathUtils.degToRad(180 - openingDegrees) / 2
-  const rightRotation = (openingDegrees: number) => -leftRotation(openingDegrees)
-  const signatures = [...new Set(model.units.map((unit) => unit.signature))]
-
-  for (const [signatureIndex, signature] of signatures.entries()) {
-    const sheets = model.units.filter((unit) => unit.signature === signature)
-    const signatureGroup = new THREE.Group()
-    signatureGroup.name = `Signature ${signature}`
-    signatureGroup.position.z =
-      (signatureIndex - (signatures.length - 1) / 2) * (sheets.length * sheetDepth + signatureGap)
-    pageBlock.add(signatureGroup)
-
-    for (const [sheetIndex, sheet] of sheets.entries()) {
-      addRestingFoldedSheet({
-        parent: signatureGroup,
-        sheet: sheet.sheet,
-        sheetIndex,
-        sheetCount: sheets.length,
-        width,
-        height: PAGE_HEIGHT,
-        depthPerSheet: sheetDepth,
-        model,
-        openingPivots,
-        leftRotation,
-        rightRotation,
-      })
-    }
-  }
-
   const readerPose = model.readerPose
   if (!readerPose) return
 
+  const { width, millimetersToWorld } = getPageDimensions(model)
+  const leafDimensions = {
+    width,
+    depth: model.materialPreset.thickness * millimetersToWorld,
+    signatureGap: model.materialPreset.signatureGap * millimetersToWorld,
+  }
   const activePose = new THREE.Group()
   activePose.name = `Active Reader Pose ${readerPose.pages.join("–")}`
   activePose.userData.readerPose = readerPose
-  if (readerPose.kind === "spread") {
-    const leftPivot = new THREE.Group()
-    leftPivot.rotation.y = leftRotation(model.openingDegrees)
-    openingPivots.push({ object: leftPivot, rotation: leftRotation })
-    leftPivot.add(
-      createActivePageMesh(
-        width,
-        PAGE_HEIGHT,
-        model,
-        -1,
-        [{ surface: surfaces.left, renderSide: THREE.FrontSide }],
-        atlas,
-        includeText,
-        paperColor,
-      ),
-    )
-    const rightPivot = new THREE.Group()
-    rightPivot.rotation.y = rightRotation(model.openingDegrees)
-    openingPivots.push({ object: rightPivot, rotation: rightRotation })
-    rightPivot.add(
-      createActivePageMesh(
-        width,
-        PAGE_HEIGHT,
-        model,
-        1,
-        [{ surface: surfaces.right, renderSide: THREE.FrontSide }],
-        atlas,
-        includeText,
-        paperColor,
-      ),
-    )
-    activePose.add(leftPivot, rightPivot)
-  } else {
-    const page = createActivePageMesh(
-      width,
-      PAGE_HEIGHT,
-      model,
-      readerPose.kind === "front" ? 1 : -1,
-      [{ surface: surfaces.visible[0], renderSide: THREE.FrontSide }],
-      atlas,
-      includeText,
-      paperColor,
-    )
-    page.position.x = 0
-    activePose.add(page)
-  }
+  activePose.position.x =
+    readerPose.kind === "front" ? -width / 2 : readerPose.kind === "back" ? width / 2 : 0
   pageBlock.add(activePose)
+
+  const signatures = new THREE.Group()
+  signatures.name = "Signatures"
+  activePose.add(signatures)
+  const signatureGroups = new Map<number, THREE.Group>()
+  const sheetByPage = new Map<number, THREE.Group>()
+  for (const unit of model.units) {
+    let signature = signatureGroups.get(unit.signature)
+    if (!signature) {
+      signature = new THREE.Group()
+      signature.name = `Signature ${unit.signature}`
+      signature.userData.signature = unit.signature
+      signatures.add(signature)
+      signatureGroups.set(unit.signature, signature)
+    }
+    const sheet = new THREE.Group()
+    sheet.name = `Folded Sheet ${unit.sheet}`
+    sheet.userData.unit = unit
+    signature.add(sheet)
+    for (const surface of unit.surfaces) sheetByPage.set(surface.logicalPage, sheet)
+  }
+
+  for (const leaf of model.foldedLeaves) {
+    const pivot = new THREE.Group()
+    pivot.name = `Leaf ${leaf.pages.join("–")}`
+    pivot.userData = { ...leaf, foldedLeaf: leaf }
+    const rotation = (openingDegrees: number) =>
+      foldedLeafRotation(leaf.stackSide, readerPose.kind, openingDegrees)
+    pivot.rotation.y = rotation(model.openingDegrees)
+    openingPivots.push({ object: pivot, rotation })
+    const sheet = sheetByPage.get(leaf.pages[0])
+    if (!sheet) throw new RangeError(`Leaf ${leaf.pages[0]} has no imposed sheet`)
+    sheet.add(pivot)
+
+    pivot.add(
+      createFoldedLeafBody(leaf, leafDimensions, model, surfaces, atlas, includeText, paperColor),
+    )
+  }
 }
 
 function createLeafStack(
@@ -436,7 +420,7 @@ function replacePageBlock(
 ) {
   disposePageBlock(pageBlock)
   openingPivots.length = 0
-  atlas.prepare(includeText ? surfaces.visible : [])
+  atlas.prepare(includeText ? surfaces.artwork : [])
   if (model.construction === "page-block") {
     createPageBlock(model, pageBlock, openingPivots, surfaces, atlas, includeText, paperColor)
   } else {
@@ -501,17 +485,116 @@ function resolveRefitRange(
   return [0, 0]
 }
 
+type PageTurn = {
+  direction: -1 | 1
+  from: PhysicalPreviewModel
+  to: PhysicalPreviewModel
+  openingDegrees: number
+}
+
+function resolveFoldedPageTurn(turn: PageTurn) {
+  const fromPose = turn.from.readerPose
+  const toPose = turn.to.readerPose
+  if (!fromPose || !toPose) return
+  const destinationSide = turn.direction === 1 ? "left" : "right"
+  const movingLeaf = turn.to.foldedLeaves.find(
+    (leaf) => leaf.stackSide === destinationSide && leaf.stackIndex === 0,
+  )
+  const previousLeaf = turn.from.foldedLeaves.find((leaf) => leaf.pages[0] === movingLeaf?.pages[0])
+  if (!movingLeaf || !previousLeaf || movingLeaf.stackSide === previousLeaf.stackSide) return
+  return {
+    movingLeaf,
+    destinationSide,
+    startRotation: foldedLeafRotation(
+      previousLeaf.stackSide,
+      toPose.kind === "spread" ? "spread" : fromPose.kind,
+      turn.openingDegrees,
+    ),
+  }
+}
+
+function preparePageTurn(pageBlock: THREE.Group, turn: PageTurn) {
+  let pivot: THREE.Object3D | undefined
+  let revealedPage: THREE.Object3D | undefined
+  let startRotation: number
+  if (turn.to.readerPose && turn.from.readerPose) {
+    const foldedTurn = resolveFoldedPageTurn(turn)
+    if (!foldedTurn) return
+    const { movingLeaf, destinationSide } = foldedTurn
+    pageBlock.traverse((object) => {
+      const leaf: FoldedPreviewLeaf | undefined = object.userData.foldedLeaf
+      if (leaf?.pages[0] === movingLeaf.pages[0]) pivot = object
+      if (leaf?.stackSide === destinationSide && leaf.stackIndex === 1) {
+        revealedPage = object.getObjectByName(`${object.name} page surfaces`)
+      }
+    })
+    startRotation = foldedTurn.startRotation
+  } else {
+    pivot = pageBlock.children.find((child) => child.name.startsWith("Active Leaf "))
+    if (!pivot) return
+    startRotation = pivot.rotation.y - turn.direction * Math.PI * 0.5
+  }
+  if (!pivot) return
+  const object = pivot
+  const endRotation = object.rotation.y
+  // The moving leaf is composited after the resting Page Block, keeping existing
+  // transmissive-paper and depth-free artwork policies without stack bleed-through.
+  object.traverse((part) => part.layers.set(1))
+  if (revealedPage) revealedPage.visible = true
+  return {
+    object,
+    startRotation,
+    endRotation,
+    finish: () => {
+      object.rotation.y = endRotation
+      if (revealedPage) revealedPage.visible = false
+      object.traverse((part) => part.layers.set(0))
+    },
+  }
+}
+
+function resolveRebuiltPageTurn({
+  model,
+  previousModel,
+  currentPage,
+  pendingTurn,
+  animateTurns,
+  wasTurning,
+  openingDegrees,
+}: {
+  model: PhysicalPreviewModel
+  previousModel: PhysicalPreviewModel
+  currentPage: number
+  pendingTurn: PageTurn | undefined
+  animateTurns: boolean
+  wasTurning: boolean
+  openingDegrees: number
+}): PageTurn | undefined {
+  if (!animateTurns) return
+  const previousPage = previousModel.selectedSurface.logicalPage
+  if (currentPage === previousPage) return model === previousModel ? pendingTurn : undefined
+  const direction = resolvePendingTurn({
+    model,
+    previousReaderPoseAnchor: previousModel.readerPose?.anchor,
+    currentPage,
+    previousPage,
+    wasTurning,
+  })
+  if (!direction) return
+  return { direction, from: previousModel, to: model, openingDegrees }
+}
+
 type RendererState = {
   pageBlock: THREE.Group
   openingPivots: OpeningPivot[]
   textAtlas: TextRunAtlas
   updateOpening: (openingDegrees: number) => void
-  refit: (openingRange?: readonly [number, number]) => void
+  refit: (openingRange?: readonly [number, number], resetView?: boolean) => void
   rotateCamera: (angle: number) => void
   zoomCamera: (inward: boolean) => void
   resetCamera: () => void
   cancelTurn: () => boolean
-  animateTurn: (direction: -1 | 1) => void
+  animateTurn: (turn: PageTurn) => void
 }
 
 function usePrefersReducedMotion() {
@@ -527,6 +610,19 @@ function usePrefersReducedMotion() {
   return reducedMotion
 }
 
+function collectLeafArtworkPages(
+  logicalPages: readonly number[],
+  leaves: readonly FoldedPreviewLeaf[],
+) {
+  const artworkPages = new Set(logicalPages)
+  for (const leaf of leaves) {
+    if (leaf.stackIndex <= 1) {
+      for (const page of leaf.pages) artworkPages.add(page)
+    }
+  }
+  return artworkPages
+}
+
 function useActivePageSurfaces(
   settings: Settings,
   model: PhysicalPreviewModel,
@@ -538,9 +634,19 @@ function useActivePageSurfaces(
       model.selectedSurface.logicalPage,
       model.selectedSurface.facingLogicalPage,
     ]
-    const visible = logicalPages.map((logicalPage) =>
-      createPageSurface(settings, logicalPage, punchHoleSets, punchHolePages.has(logicalPage)),
-    )
+    const artworkPages = collectLeafArtworkPages(logicalPages, model.foldedLeaves)
+    const byPage = new Map<number, PageSurface>()
+    const visible: PageSurface[] = []
+    for (const logicalPage of artworkPages) {
+      const surface = createPageSurface(
+        settings,
+        logicalPage,
+        punchHoleSets,
+        punchHolePages.has(logicalPage),
+      )
+      byPage.set(logicalPage, surface)
+      if (logicalPages.includes(logicalPage)) visible.push(surface)
+    }
     const selected = visible[0]
     const facing = visible[1] ?? selected
     const [left, right] = model.readerPose
@@ -548,7 +654,7 @@ function useActivePageSurfaces(
       : selected.metrics.bindingEdge === "right"
         ? [selected, facing]
         : [facing, selected]
-    return { selected, facing, left, right, visible }
+    return { selected, facing, left, right, visible, artwork: [...byPage.values()], byPage }
   }, [model, punchHolePages, punchHoleSets, settings])
 }
 
@@ -559,7 +665,7 @@ function useSurfaceTextReady(activeSurfaces: ActivePageSurfaces) {
     let cancelled = false
     setReadySurfaceKey("")
     const fonts = globalThis.document.fonts
-    const requests = getSurfaceFontRequests(activeSurfaces.visible)
+    const requests = getSurfaceFontRequests(activeSurfaces.artwork)
     void fonts.ready
       .then(() =>
         Promise.all([...requests].map(([font, text]) => fonts.load(font, [...text].join("")))),
@@ -634,6 +740,7 @@ function usePhysicalPreviewModel(
     activeSurfaces,
     includeText,
     effectiveOpeningDegrees,
+    turnOpeningDegrees: openingDegrees,
   }
 }
 
@@ -774,8 +881,7 @@ export function PhysicalDesignPreview({
 }) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const rendererStateRef = useRef<RendererState>(null)
-  const previousPageRef = useRef(currentPage)
-  const pendingTurnRef = useRef<-1 | 1 | undefined>(undefined)
+  const pendingTurnRef = useRef<PageTurn | undefined>(undefined)
   const {
     model,
     status,
@@ -785,6 +891,7 @@ export function PhysicalDesignPreview({
     activeSurfaces,
     includeText,
     effectiveOpeningDegrees,
+    turnOpeningDegrees,
   } = usePhysicalPreviewModel(
     settings,
     document,
@@ -793,9 +900,11 @@ export function PhysicalDesignPreview({
     opening,
     rendererStateRef,
   )
-  const previousReaderPoseAnchorRef = useRef(model.readerPose?.anchor)
+  const previousModelRef = useRef(model)
   const openingDegreesRef = useRef(effectiveOpeningDegrees)
   openingDegreesRef.current = effectiveOpeningDegrees
+  const turnOpeningDegreesRef = useRef(turnOpeningDegrees)
+  turnOpeningDegreesRef.current = turnOpeningDegrees
 
   function handlePreviewKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (!(event.target instanceof HTMLCanvasElement)) return
@@ -836,24 +945,46 @@ export function PhysicalDesignPreview({
     const pageBlock = new THREE.Group()
     pageBlock.name = "Page Block"
     scene.add(pageBlock)
-    scene.add(new THREE.HemisphereLight("#fff7e7", "#3b2e25", 2.2))
+    const fillLight = new THREE.HemisphereLight("#fff7e7", "#3b2e25", 2.2)
+    fillLight.layers.enable(1)
+    scene.add(fillLight)
     const keyLight = new THREE.DirectionalLight("#ffe8c3", 3)
     keyLight.position.set(0, 5, 6)
+    keyLight.layers.enable(1)
     scene.add(keyLight)
 
     let frame = 0
     let turnFrame = 0
+    let finishTurn: (() => void) | undefined
+    const renderScene = () => {
+      renderer.render(scene, camera)
+      if (!finishTurn) return
+      const background = scene.background
+      const autoClear = renderer.autoClear
+      const cameraLayers = camera.layers.mask
+      scene.background = null
+      renderer.autoClear = false
+      camera.layers.set(1)
+      try {
+        renderer.render(scene, camera)
+      } finally {
+        camera.layers.mask = cameraLayers
+        renderer.autoClear = autoClear
+        scene.background = background
+      }
+    }
     const invalidate = () => {
       if (frame) return
       frame = requestAnimationFrame(() => {
         frame = 0
-        renderer.render(scene, camera)
+        renderScene()
       })
     }
     controls.addEventListener("change", invalidate)
     const openingPivots: OpeningPivot[] = []
     const textAtlas = new TextRunAtlas()
     let fitOpeningRange: readonly [number, number] | undefined
+    let hasCameraFit = false
     const defaultCameraPosition = new THREE.Vector3()
     const defaultCameraTarget = new THREE.Vector3()
     const resetCamera = () => {
@@ -872,31 +1003,36 @@ export function PhysicalDesignPreview({
       controls.update()
     }
     const cancelTurn = () => {
-      if (!turnFrame) return false
+      if (!finishTurn) return false
       cancelAnimationFrame(turnFrame)
       turnFrame = 0
+      finishTurn()
+      finishTurn = undefined
+      invalidate()
       return true
     }
-    const animateTurn = (direction: -1 | 1) => {
-      const activeSheet = pageBlock.children.find((child) => child.name.startsWith("Active "))
-      if (!activeSheet) return
+    const animateTurn = (turn: PageTurn) => {
       cancelTurn()
+      const prepared = preparePageTurn(pageBlock, turn)
+      if (!prepared) return
+      finishTurn = prepared.finish
       const start = performance.now()
-      const startRotation = -direction * Math.PI * 0.5
-      activeSheet.rotation.y = startRotation
+      prepared.object.rotation.y = prepared.startRotation
       const renderTurn = (time: number) => {
-        const progress = Math.min(1, (time - start) / TURN_DURATION)
-        activeSheet.rotation.y = startRotation * (1 - progress) ** 3
-        renderer.render(scene, camera)
+        const progress = THREE.MathUtils.clamp((time - start) / TURN_DURATION, 0, 1)
+        prepared.object.rotation.y =
+          prepared.endRotation +
+          (prepared.startRotation - prepared.endRotation) * (1 - progress) ** 3
         if (progress < 1) turnFrame = requestAnimationFrame(renderTurn)
-        else turnFrame = 0
+        else cancelTurn()
+        renderScene()
       }
       turnFrame = requestAnimationFrame(renderTurn)
     }
     const applyOpening = (degrees: number) => {
       for (const pivot of openingPivots) pivot.object.rotation.y = pivot.rotation(degrees)
     }
-    const refit = (openingRange?: readonly [number, number]) => {
+    const refit = (openingRange?: readonly [number, number], resetView = false) => {
       if (openingRange) fitOpeningRange = openingRange
       if (!fitOpeningRange || !camera.aspect) return
 
@@ -929,13 +1065,21 @@ export function PhysicalDesignPreview({
         defaultCameraTarget.y + perspectiveDistance * 0.15,
         bounds.max.z + perspectiveDistance * CAMERA_FIT_MARGIN,
       )
+      const shouldResetView = resetView || !hasCameraFit
       const defaultDistance = defaultCameraPosition.distanceTo(defaultCameraTarget)
-      controls.minDistance = defaultDistance * 0.7
-      controls.maxDistance = defaultDistance * 1.5
+      const currentDistance = shouldResetView
+        ? defaultDistance
+        : camera.position.distanceTo(controls.target)
+      controls.minDistance = Math.min(defaultDistance * 0.7, currentDistance)
+      controls.maxDistance = Math.max(defaultDistance * 1.5, currentDistance)
       camera.updateProjectionMatrix()
-      resetCamera()
+      if (shouldResetView) {
+        hasCameraFit = true
+        resetCamera()
+      }
     }
     const updateOpening = (degrees: number) => {
+      cancelTurn()
       applyOpening(degrees)
       invalidate()
     }
@@ -946,7 +1090,7 @@ export function PhysicalDesignPreview({
       renderer.setSize(width, height, false)
       camera.aspect = width / height
       camera.updateProjectionMatrix()
-      refit()
+      refit(undefined, true)
       invalidate()
     }
     const onContextLost = (event: Event) => {
@@ -978,8 +1122,8 @@ export function PhysicalDesignPreview({
 
     return () => {
       rendererStateRef.current = null
-      cancelAnimationFrame(frame)
       cancelTurn()
+      cancelAnimationFrame(frame)
       resizeObserver.disconnect()
       controls.removeEventListener("change", invalidate)
       controls.dispose()
@@ -995,19 +1139,17 @@ export function PhysicalDesignPreview({
   useEffect(() => {
     const rendererState = rendererStateRef.current
     if (!rendererState) return
-    const previousPage = previousPageRef.current
-    const wasTurning = rendererState.cancelTurn()
-    if (!animateTurns) {
-      pendingTurnRef.current = undefined
-    } else if (currentPage !== previousPage) {
-      pendingTurnRef.current = resolvePendingTurn({
-        model,
-        previousReaderPoseAnchor: previousReaderPoseAnchorRef.current,
-        currentPage,
-        previousPage,
-        wasTurning,
-      })
-    }
+    const previousModel = previousModelRef.current
+    const previousPage = previousModel.selectedSurface.logicalPage
+    pendingTurnRef.current = resolveRebuiltPageTurn({
+      model,
+      previousModel,
+      currentPage,
+      pendingTurn: pendingTurnRef.current,
+      animateTurns,
+      wasTurning: rendererState.cancelTurn(),
+      openingDegrees: turnOpeningDegreesRef.current,
+    })
     replacePageBlock(
       rendererState.pageBlock,
       model,
@@ -1018,14 +1160,16 @@ export function PhysicalDesignPreview({
       settings.previewPaperColor,
     )
     rendererState.updateOpening(openingDegreesRef.current)
-    rendererState.refit(resolveRefitRange(model, settings.binding, materialPreset))
+    rendererState.refit(
+      resolveRefitRange(model, settings.binding, materialPreset),
+      model !== previousModel && currentPage === previousPage,
+    )
     const pendingTurn = pendingTurnRef.current
     if (animateTurns && includeText && pendingTurn) {
       rendererState.animateTurn(pendingTurn)
       pendingTurnRef.current = undefined
     }
-    previousPageRef.current = currentPage
-    previousReaderPoseAnchorRef.current = model.readerPose?.anchor
+    previousModelRef.current = model
   }, [
     activeSurfaces,
     animateTurns,

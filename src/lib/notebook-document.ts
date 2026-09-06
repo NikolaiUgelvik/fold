@@ -36,13 +36,19 @@ export function createNotebookDocumentKernel(settings: NotebookDocumentConstruct
     twoUp: settings.yotsumeTwoUp,
   })
   const paper = getPaperSize(settings.paper)
+  const pages = new Set<number>()
+  const signatures = new Set<number>()
+  for (const side of sides) {
+    signatures.add(side.signature)
+    for (const page of side.pages) pages.add(page)
+  }
 
   return {
     pageLayout,
     pageSize: pageLayout.page,
     sides,
-    totalPages: new Set(sides.flatMap((side) => side.pages)).size,
-    signatureCount: new Set(sides.map((side) => side.signature)).size,
+    totalPages: pages.size,
+    signatureCount: signatures.size,
     pageName:
       settings.binding === "yotsume" && !settings.yotsumeTwoUp ? paper.sheetName : paper.pageName,
   }
@@ -53,6 +59,13 @@ export function createNotebookDocument(
   kernel = createNotebookDocumentKernel(settings),
 ) {
   const separateGuide = usesSeparatePunchGuide(settings.punchHolePlacement)
+  const punchHolePages = new Set<number>()
+  kernel.sides.forEach((side) => {
+    if (!showsPunchHoles(settings.punchHolePlacement, side, settings.sheets)) return
+    side.pages.forEach((page) => {
+      punchHolePages.add(page)
+    })
+  })
 
   return {
     ...kernel,
@@ -60,11 +73,7 @@ export function createNotebookDocument(
       settings.punchHoleSets,
       isFoldedBinding(settings.binding),
     ),
-    punchHolePages: new Set(
-      kernel.sides
-        .filter((side) => showsPunchHoles(settings.punchHolePlacement, side, settings.sheets))
-        .flatMap((side) => side.pages),
-    ),
+    punchHolePages,
     guide: separateGuide ? createPunchGuide(settings, kernel.sides) : null,
     guideSides: separateGuide ? 1 : 0,
   }
