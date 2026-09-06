@@ -10,6 +10,8 @@ import {
   type PageAppearanceOverride,
   type Settings,
 } from "./settings.ts"
+import { isSudokuBoards } from "./sudoku.ts"
+import { type SudokuDifficulty, sudokuDifficulties } from "./sudoku-difficulty.ts"
 
 export const PROJECT_STORAGE_KEY = "fold.projects.v1"
 export const PROJECT_NAME_MAX = 60
@@ -143,16 +145,39 @@ function numericPageEntries(raw: unknown): Array<[number, unknown]> {
   return entries
 }
 
+function normalizeSudokuPage(boards: unknown, difficulty: unknown): CustomPage | null {
+  if (!isSudokuBoards(boards)) return null
+  return {
+    type: "sudoku",
+    difficulty: strictEnum<SudokuDifficulty>(difficulty, sudokuDifficulties) ?? "easy",
+    boards: [...boards],
+  }
+}
+
+function normalizeCustomPage(value: Record<string, unknown>): CustomPage | null {
+  const { type, title, subtitle, entries, boards, difficulty } = value
+  switch (type) {
+    case "title":
+      return typeof title === "string" && typeof subtitle === "string"
+        ? { type, title, subtitle }
+        : null
+    case "index":
+      return typeof title === "string" && typeof entries === "string"
+        ? { type, title, entries }
+        : null
+    case "sudoku":
+      return normalizeSudokuPage(boards, difficulty)
+    default:
+      return null
+  }
+}
+
 function normalizeCustomPages(raw: unknown): Record<number, CustomPage> {
   const result: Record<number, CustomPage> = {}
   for (const [page, value] of numericPageEntries(raw)) {
     if (!isPlainObject(value)) continue
-    const { type, title, subtitle, entries } = value
-    if (type === "title" && typeof title === "string" && typeof subtitle === "string") {
-      result[page] = { type: "title", title, subtitle }
-    } else if (type === "index" && typeof title === "string" && typeof entries === "string") {
-      result[page] = { type: "index", title, entries }
-    }
+    const customPage = normalizeCustomPage(value)
+    if (customPage) result[page] = customPage
   }
   return result
 }

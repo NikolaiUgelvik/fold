@@ -1,8 +1,9 @@
 import { memo, useId } from "react"
 
-import { createPageSurface, getPageNumberAlignment, type PageMetrics } from "@/lib/page-surface"
+import { createPageSurface, type PageMetrics, type PageSurface } from "@/lib/page-surface"
 import type { HoleSet } from "@/lib/punch-holes"
-import type { ResolvedPageAppearance, Settings } from "@/lib/settings"
+import type { Settings } from "@/lib/settings"
+import { SUDOKU_BOX_WIDTH, SUDOKU_LINE_WIDTH } from "@/lib/sudoku-layout"
 
 type PatternBounds = {
   x: number
@@ -280,94 +281,45 @@ function PageBorder({ settings, metrics }: { settings: Settings; metrics: PageMe
   )
 }
 
-function CustomPageLayer({ metrics }: { metrics: PageMetrics }) {
-  const { pageSize, customPage, indexEntries, pageMargins, contentWidth, contentCenterX } = metrics
-  return (
-    <>
-      {customPage?.type === "title" && (
-        <g fill="#30302c" fontFamily="Georgia, serif" textAnchor="middle">
-          <text
-            x={contentCenterX}
-            y={pageSize.height * 0.44}
-            fontSize={customPage.title.length > 24 ? 6 : 9}
-            fontWeight="bold"
-          >
-            {customPage.title}
-          </text>
-          <text x={contentCenterX} y={pageSize.height * 0.52} fontSize="4">
-            {customPage.subtitle}
-          </text>
-        </g>
-      )}
-      {customPage?.type === "index" && (
-        <g fill="#30302c" fontFamily="Georgia, serif">
-          <text x={pageMargins.left} y="22" fontSize="7" fontWeight="bold">
-            {customPage.title}
-          </text>
-          {indexEntries.map((entry, index) => {
-            const y = 38 + index * 9
-            return (
-              <g key={`${entry.label}-${entry.page}`}>
-                <text x={pageMargins.left} y={y} fontSize="3.8">
-                  {entry.label}
-                </text>
-                {entry.page && (
-                  <>
-                    <line
-                      x1={pageMargins.left + contentWidth * 0.58}
-                      x2={pageSize.width - pageMargins.right - 10}
-                      y1={y - 1}
-                      y2={y - 1}
-                      stroke="#908b82"
-                      strokeWidth="0.25"
-                      strokeDasharray="1 1.5"
-                    />
-                    <text
-                      x={pageSize.width - pageMargins.right}
-                      y={y}
-                      fontSize="3.8"
-                      textAnchor="end"
-                    >
-                      {entry.page}
-                    </text>
-                  </>
-                )}
-              </g>
-            )
-          })}
-        </g>
-      )}
-    </>
-  )
+const sudokuGridLines = Array.from({ length: 10 }, (_, index) => index)
+
+function SudokuGrids({ boards }: { boards: PageSurface["sudokuBoards"] }) {
+  return boards.map((board) => (
+    <g
+      key={`${board.x}-${board.y}`}
+      data-sudoku-board=""
+      transform={`translate(${board.x} ${board.y})`}
+      stroke="#30302c"
+    >
+      {sudokuGridLines.map((index) => {
+        const offset = (index * board.size) / 9
+        return (
+          <g key={index} strokeWidth={index % 3 === 0 ? SUDOKU_BOX_WIDTH : SUDOKU_LINE_WIDTH}>
+            <line x1={offset} x2={offset} y1={0} y2={board.size} />
+            <line x1={0} x2={board.size} y1={offset} y2={offset} />
+          </g>
+        )
+      })}
+    </g>
+  ))
 }
 
-function PageNumber({
-  settings,
-  metrics,
-}: {
-  settings: Settings & Pick<ResolvedPageAppearance, "numberVisible" | "pageNumberText">
-  metrics: PageMetrics
-}) {
-  const { pageSize } = metrics
-  const { x, anchor } = getPageNumberAlignment(settings, metrics)
-  return (
-    <>
-      {settings.numberVisible && (
-        <text
-          x={x}
-          y={pageSize.height - 7}
-          fill={settings.numberColor}
-          fontFamily={settings.numberFont}
-          fontSize={(settings.numberFontSize * 25.4) / 72}
-          fontStyle={settings.numberItalic ? "italic" : "normal"}
-          fontWeight={settings.numberBold ? 700 : 400}
-          textAnchor={anchor}
-        >
-          {settings.pageNumberText}
-        </text>
-      )}
-    </>
-  )
+function PageText({ runs }: { runs: PageSurface["textRuns"] }) {
+  return runs.map((run) => (
+    <text
+      key={run.id}
+      x={run.x}
+      y={run.y}
+      fill={run.color}
+      fontFamily={run.fontFamily}
+      fontSize={run.fontSize}
+      fontWeight={run.fontWeight}
+      fontStyle={run.fontStyle}
+      textAnchor={run.anchor}
+    >
+      {run.text}
+    </text>
+  ))
 }
 
 export const PageSvg = memo(function PageSvg({
@@ -410,7 +362,19 @@ export const PageSvg = memo(function PageSvg({
         slantOverlayId={slantOverlayId}
       />
       <PageBorder settings={pageSettings} metrics={metrics} />
-      <CustomPageLayer metrics={metrics} />
+      {surface.indexLineYs.map((y) => (
+        <line
+          key={y}
+          x1={metrics.pageMargins.left + metrics.contentWidth * 0.58}
+          x2={metrics.pageSize.width - metrics.pageMargins.right - 10}
+          y1={y}
+          y2={y}
+          stroke="#908b82"
+          strokeWidth="0.25"
+          strokeDasharray="1 1.5"
+        />
+      ))}
+      <SudokuGrids boards={surface.sudokuBoards} />
       {punchHoles.length > 0 && (
         <g fill="none" stroke="#30302c" strokeWidth="0.25">
           {punchHoles.map((hole) => (
@@ -423,7 +387,7 @@ export const PageSvg = memo(function PageSvg({
           ))}
         </g>
       )}
-      <PageNumber settings={pageSettings} metrics={metrics} />
+      <PageText runs={surface.textRuns} />
     </svg>
   )
 })

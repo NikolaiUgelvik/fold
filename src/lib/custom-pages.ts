@@ -1,6 +1,9 @@
+import type { SudokuDifficulty } from "./sudoku-difficulty.ts"
+
 export type CustomPage =
   | { type: "title"; title: string; subtitle: string }
   | { type: "index"; title: string; entries: string }
+  | { type: "sudoku"; difficulty: SudokuDifficulty; boards: string[] }
 
 export function parseIndexEntries(entries: string) {
   return entries.split("\n").flatMap((line) => {

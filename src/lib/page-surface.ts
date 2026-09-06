@@ -5,6 +5,7 @@ import { displayedPage, getOuterPageNumberEdge } from "./page-numbering.ts"
 import { getCenteredPatternBounds } from "./paper.ts"
 import { getPageBindingEdge, getPunchHoles, type HoleSet } from "./punch-holes.ts"
 import { resolvePageAppearance, type Settings } from "./settings.ts"
+import { layoutSudokuBoards, type SudokuBoardLayout } from "./sudoku-layout.ts"
 
 function getPatternBasics(settings: Settings) {
   if (settings.pattern === "cross") {
@@ -156,7 +157,7 @@ export type PageTextRun = {
   anchor: "start" | "middle" | "end"
 }
 
-export function getPageNumberAlignment(settings: Settings, metrics: PageMetrics) {
+function getPageNumberAlignment(settings: Settings, metrics: PageMetrics) {
   if (settings.numberPosition === "center")
     return { x: metrics.pageSize.width / 2, anchor: "middle" as const }
   if (metrics.numberEdge === "right")
@@ -272,13 +273,40 @@ function createPageNumberRun(
   ]
 }
 
+function createSudokuRuns(boards: SudokuBoardLayout[]): PageTextRun[] {
+  const runs: PageTextRun[] = []
+  for (const [boardIndex, board] of boards.entries()) {
+    const cell = board.size / 9
+    const fontSize = cell * 0.55
+    for (let index = 0; index < board.puzzle.length; index++) {
+      const text = board.puzzle[index]
+      if (text === "0") continue
+      runs.push({
+        id: `sudoku-${boardIndex}-${index}`,
+        text,
+        x: board.x + ((index % 9) + 0.5) * cell,
+        y: board.y + (Math.floor(index / 9) + 0.5) * cell + fontSize * 0.35,
+        fontFamily: "Arial, sans-serif",
+        fontSize,
+        fontWeight: 400,
+        fontStyle: "normal",
+        color: "#30302c",
+        anchor: "middle",
+      })
+    }
+  }
+  return runs
+}
+
 function createTextRuns(
   settings: ReturnType<typeof resolvePageAppearance>,
   metrics: PageMetrics,
+  sudokuBoards: SudokuBoardLayout[],
 ): PageTextRun[] {
   return [
     ...createTitleRuns(metrics),
     ...createIndexRuns(metrics),
+    ...createSudokuRuns(sudokuBoards),
     ...createPageNumberRun(settings, metrics),
   ]
 }
@@ -289,6 +317,7 @@ export type PageSurface = {
   metrics: PageMetrics
   punchHoles: ReturnType<typeof getPunchHoles>
   indexLineYs: number[]
+  sudokuBoards: SudokuBoardLayout[]
   textRuns: PageTextRun[]
 }
 
@@ -300,6 +329,18 @@ export function createPageSurface(
 ): PageSurface {
   const appearance = resolvePageAppearance(settings, logicalPage)
   const metrics = getPageMetrics(appearance, logicalPage)
+  const sudokuBoards = layoutSudokuBoards(
+    metrics.customPage?.type === "sudoku" ? metrics.customPage.boards : [],
+    {
+      x: metrics.pageMargins.left,
+      y: metrics.pageMargins.top,
+      width: metrics.contentWidth,
+      height: Math.max(
+        0,
+        metrics.pageSize.height - metrics.pageMargins.top - metrics.pageMargins.bottom,
+      ),
+    },
+  )
   const punchHoles = showPunchHoles
     ? getPunchHoles(
         metrics.pageSize,
@@ -315,9 +356,10 @@ export function createPageSurface(
     appearance,
     metrics,
     punchHoles,
+    sudokuBoards,
     indexLineYs: metrics.indexEntries.flatMap((entry, index) =>
       entry.page ? [37 + index * 9] : [],
     ),
-    textRuns: createTextRuns(appearance, metrics),
+    textRuns: createTextRuns(appearance, metrics, sudokuBoards),
   }
 }

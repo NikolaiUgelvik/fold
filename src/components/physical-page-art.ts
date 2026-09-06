@@ -1,6 +1,7 @@
 import * as THREE from "three"
 
 import type { PageMetrics, PageSurface, PageTextRun } from "@/lib/page-surface"
+import { SUDOKU_BOX_WIDTH, SUDOKU_LINE_WIDTH } from "@/lib/sudoku-layout"
 
 const ATLAS_SIZE = 2048
 const ATLAS_PIXELS_PER_MILLIMETER = 8
@@ -56,6 +57,10 @@ uniform int uIndexLineCount;
 uniform float uIndexLineStart;
 uniform float uIndexLineEnd;
 uniform vec3 uIndexLineColor;
+uniform vec3 uSudokuBoards[6];
+uniform int uSudokuBoardCount;
+uniform vec2 uSudokuLineWidths;
+uniform vec3 uSudokuColor;
 
 float insideRect(vec2 point, vec4 rect) {
   return step(rect.x, point.x) * step(rect.y, point.y) *
@@ -208,6 +213,26 @@ void main() {
     over(painted, uIndexLineColor, lineMask(abs(point.y - y), 0.25) * withinLine * dash);
   }
 
+  for (int index = 0; index < uSudokuBoardCount; index += 1) {
+    vec3 board = uSudokuBoards[index];
+    float halfWidth = uSudokuLineWidths.y * 0.5;
+    vec4 bounds = vec4(board.xy - vec2(halfWidth), vec2(board.z + 2.0 * halfWidth));
+    if (insideRect(point, bounds) == 0.0) continue;
+    float cell = board.z / 9.0;
+    float thin = min(
+      nearestGridDistance(point.x, board.x, cell),
+      nearestGridDistance(point.y, board.y, cell)
+    );
+    float thick = min(
+      nearestGridDistance(point.x, board.x, cell * 3.0),
+      nearestGridDistance(point.y, board.y, cell * 3.0)
+    );
+    over(painted, uSudokuColor, max(
+      lineMask(thin, uSudokuLineWidths.x),
+      lineMask(thick, uSudokuLineWidths.y)
+    ));
+  }
+
   outColor = painted;
 }
 `
@@ -330,6 +355,15 @@ function createPageArtMaterial(surface: PageSurface, flipX: boolean, renderSide:
       uIndexLineStart: { value: metrics.pageMargins.left + metrics.contentWidth * 0.58 },
       uIndexLineEnd: { value: metrics.pageSize.width - metrics.pageMargins.right - 10 },
       uIndexLineColor: { value: new THREE.Color("#908b82") },
+      uSudokuBoards: {
+        value: Array.from({ length: 6 }, (_, index) => {
+          const board = surface.sudokuBoards[index]
+          return new THREE.Vector3(board?.x ?? 0, board?.y ?? 0, board?.size ?? 0)
+        }),
+      },
+      uSudokuBoardCount: { value: surface.sudokuBoards.length },
+      uSudokuLineWidths: { value: new THREE.Vector2(SUDOKU_LINE_WIDTH, SUDOKU_BOX_WIDTH) },
+      uSudokuColor: { value: new THREE.Color("#30302c") },
     },
   })
 }
@@ -443,11 +477,14 @@ function createTextTile(run: PageTextRun): TextTile | null {
   return { canvas, width, height, contentWidth, ascent }
 }
 
+type PackedTextTile = Omit<TextTile, "canvas"> & { x: number; y: number }
+
 export class TextRunAtlas {
   readonly canvas = document.createElement("canvas")
   readonly texture: THREE.CanvasTexture
   private readonly context: CanvasRenderingContext2D
   private readonly entries = new Map<string, AtlasEntry>()
+  private readonly tiles = new Map<string, PackedTextTile>()
   private cursorX = 0
   private cursorY = 0
   private rowHeight = 0
@@ -467,6 +504,7 @@ export class TextRunAtlas {
 
   prepare(surfaces: PageSurface[]) {
     this.entries.clear()
+    this.tiles.clear()
     this.cursorX = 0
     this.cursorY = 0
     this.rowHeight = 0
@@ -498,14 +536,31 @@ export class TextRunAtlas {
     return placement
   }
 
+  private packText(run: PageTextRun) {
+    const key = `${fontFor(run)}\0${run.color}\0${run.text}`
+    const cached = this.tiles.get(key)
+    if (cached) return cached
+    const tile = createTextTile(run)
+    if (!tile) return null
+    const placement = this.reserve(tile.width, tile.height)
+    if (!placement) return null
+    this.context.drawImage(tile.canvas, placement.x, placement.y)
+    const packed = {
+      ...placement,
+      width: tile.width,
+      height: tile.height,
+      contentWidth: tile.contentWidth,
+      ascent: tile.ascent,
+    }
+    this.tiles.set(key, packed)
+    return packed
+  }
+
   private add(logicalPage: number, run: PageTextRun) {
     const key = `${logicalPage}:${run.id}`
     if (this.entries.has(key)) return
-    const tile = createTextTile(run)
+    const tile = this.packText(run)
     if (!tile) return
-    const placement = this.reserve(tile.width, tile.height)
-    if (!placement) return
-    this.context.drawImage(tile.canvas, placement.x, placement.y)
 
     const textWidth = tile.contentWidth / ATLAS_PIXELS_PER_MILLIMETER
     const textLeft =
@@ -513,8 +568,8 @@ export class TextRunAtlas {
       (run.anchor === "middle" ? textWidth / 2 : run.anchor === "end" ? textWidth : 0) -
       (ATLAS_TILE_GUARD + ATLAS_TEXT_INSET) / ATLAS_PIXELS_PER_MILLIMETER
     this.entries.set(key, {
-      x: placement.x,
-      y: placement.y,
+      x: tile.x,
+      y: tile.y,
       width: tile.width,
       height: tile.height,
       pageX: textLeft,

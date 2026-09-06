@@ -22,6 +22,18 @@ Set horizontal and vertical full stroke lengths independently, along with spacin
 thickness, and color. These settings support both all-page defaults and individual
 page overrides, and are preserved in saved projects, previews, and PDF output.
 
+Choose **Sudoku** under **Content → Template** to place 1–6 generated 9×9 puzzles
+on the current page. Boards fit automatically within the page margins, with bold
+3×3 box boundaries. Every generated puzzle has a unique solution. Increasing the
+board count keeps existing puzzles; **Generate new puzzles** replaces them.
+Puzzle contents are preserved in saved projects, both previews, and PDF output.
+
+Set **Difficulty** to **Easy** (single-candidate cells), **Medium** (also needs
+hidden singles), or **Hard** (needs techniques beyond singles). Changing difficulty
+regenerates the current page's boards; added boards use the selected level.
+Difficulty is saved per page. Older saved puzzles stay unchanged and default to
+Easy for future generation.
+
 To export, choose a print pass, select **Export PDF**, then use actual size in
 the print dialog. For automatic duplex, choose **All sides** and short-edge
 flipping, except for full-sheet portrait Japanese stab pages, which use

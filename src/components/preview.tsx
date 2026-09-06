@@ -72,7 +72,7 @@ function supportsPhysicalPreview() {
 }
 
 const pageTypeIcons: Record<
-  Settings["pattern"] | "title" | "index",
+  Settings["pattern"] | Settings["customPages"][number]["type"],
   { icon: LucideIcon; label: string }
 > = {
   dots: { icon: Grip, label: "dotted page" },
@@ -85,6 +85,7 @@ const pageTypeIcons: Record<
   blank: { icon: File, label: "blank page" },
   title: { icon: Heading1, label: "title page" },
   index: { icon: List, label: "index page" },
+  sudoku: { icon: Grid3X3, label: "Sudoku page" },
 }
 
 const PageThumbnail = memo(function PageThumbnail({

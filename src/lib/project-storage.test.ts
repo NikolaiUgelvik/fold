@@ -88,6 +88,83 @@ test("save and load round-trips a modified notebook document", () => {
   assertLoaded(storage, "summer book", settings)
 })
 
+test("save and repeated load preserve Sudoku boards alongside existing templates", () => {
+  const storage = new FakeStorage()
+  const board = "530070000600195000098000060800060003400803001700020006060000280000419005000080079"
+  const reversed = [...board].reverse().join("")
+  const settings: Settings = {
+    ...structuredClone(initialSettings),
+    customPages: {
+      1: { type: "sudoku", difficulty: "medium", boards: [board] },
+      2: {
+        type: "sudoku",
+        difficulty: "hard",
+        boards: [board, reversed, board, reversed, board, reversed],
+      },
+      3: { type: "title", title: "Puzzles", subtitle: "Keep these boards" },
+      4: { type: "index", title: "Contents", entries: "Sudoku | 1" },
+    },
+  }
+
+  assert.equal(saveProject("Sudoku book", settings, storage).ok, true)
+  assertLoaded(storage, "Sudoku book", settings)
+  assertLoaded(storage, "Sudoku book", settings)
+})
+
+test("older or invalid difficulty settings preserve puzzles and use Easy for future generation", () => {
+  const board = "530070000600195000098000060800060003400803001700020006060000280000419005000080079"
+  const normalized = normalizeStoredSettings({
+    customPages: {
+      1: { type: "sudoku", boards: [board] },
+      2: { type: "sudoku", difficulty: "expert", boards: [board] },
+      3: { type: "sudoku", difficulty: 2, boards: [board] },
+    },
+  })
+  assert.ok(normalized)
+  for (const page of Object.values(normalized.customPages)) {
+    assert.deepEqual(page, { type: "sudoku", difficulty: "easy", boards: [board] })
+  }
+  assert.equal(Object.keys(normalized.customPages).length, 3)
+})
+
+test("loadProject drops malformed Sudoku pages without losing valid page content", () => {
+  const storage = new FakeStorage()
+  const board = "530070000600195000098000060800060003400803001700020006060000280000419005000080079"
+  const validPages = {
+    1: { type: "sudoku", difficulty: "easy", boards: [board] },
+    2: { type: "title", title: "Keep", subtitle: "Title" },
+    3: { type: "index", title: "Keep", entries: "Contents | 1" },
+  }
+  storage.setItem(
+    PROJECT_STORAGE_KEY,
+    JSON.stringify({
+      version: 1,
+      projects: [
+        {
+          name: "Corrupted puzzles",
+          savedAt: 1,
+          settings: {
+            customPages: {
+              ...validPages,
+              4: { type: "sudoku" },
+              5: { type: "sudoku", boards: [] },
+              6: { type: "sudoku", boards: Array.from({ length: 7 }, () => board) },
+              7: { type: "sudoku", boards: board },
+              8: { type: "sudoku", boards: [null] },
+              9: { type: "sudoku", boards: [board.slice(1)] },
+              10: { type: "sudoku", boards: [board, `${board.slice(1)}x`] },
+            },
+          },
+        },
+      ],
+    }),
+  )
+
+  const loaded = loadProject("Corrupted puzzles", storage)
+  assert.ok(loaded.ok)
+  assert.deepEqual(loaded.value.customPages, validPages)
+})
+
 test("listProjects sorts newest first", () => {
   const storage = new FakeStorage()
   storage.setItem(

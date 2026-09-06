@@ -36,6 +36,8 @@ import {
   setPageAppearanceOverride,
   setPageAppearanceSettingOverride,
 } from "@/lib/settings"
+import { generateSudoku } from "@/lib/sudoku"
+import type { SudokuDifficulty } from "@/lib/sudoku-difficulty"
 import { tropheeColors } from "@/lib/trophee-colors"
 
 export type PagePropertiesProps = {
@@ -618,8 +620,94 @@ function LayoutTab({
   )
 }
 
+type SudokuPage = Extract<Settings["customPages"][number], { type: "sudoku" }>
+
+const sudokuDifficultyOptions = { easy: "Easy", medium: "Medium", hard: "Hard" } satisfies Record<
+  SudokuDifficulty,
+  string
+>
+
+function SudokuError({ message }: { message: string }) {
+  return message ? (
+    <p role="alert" className="text-2xs text-destructive">
+      {message}
+    </p>
+  ) : null
+}
+
+function SudokuControls({
+  page,
+  onChange,
+}: {
+  page: SudokuPage
+  onChange: (page: SudokuPage) => void
+}) {
+  const [error, setError] = useState("")
+  function updatePuzzles(difficulty: SudokuDifficulty, count: number, retained: string[] = []) {
+    try {
+      const boards = retained.slice(0, count)
+      while (boards.length < count) boards.push(generateSudoku(difficulty))
+      onChange({ type: "sudoku", difficulty, boards })
+      setError("")
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Could not generate puzzles. Try again.")
+    }
+  }
+  return (
+    <>
+      <Field label="Difficulty" htmlFor="sudoku-difficulty">
+        <SelectControl
+          id="sudoku-difficulty"
+          value={page.difficulty}
+          options={sudokuDifficultyOptions}
+          onChange={(value) => updatePuzzles(value as SudokuDifficulty, page.boards.length)}
+        />
+      </Field>
+      <Field label="Boards per page" htmlFor="sudoku-board-count">
+        <SelectControl
+          id="sudoku-board-count"
+          value={String(page.boards.length)}
+          options={{ "1": "1", "2": "2", "3": "3", "4": "4", "5": "5", "6": "6" }}
+          onChange={(value) => updatePuzzles(page.difficulty, Number(value), page.boards)}
+        />
+      </Field>
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => updatePuzzles(page.difficulty, page.boards.length)}
+      >
+        Generate new puzzles
+      </Button>
+      <SudokuError message={error} />
+      <p className="text-2xs leading-4 text-muted-foreground">
+        Easy uses single-candidate cells. Medium also requires finding a digit’s only possible
+        position in a row, column, or box. Hard needs techniques beyond those singles. Changing
+        difficulty replaces this page’s puzzles.
+      </p>
+      <p className="text-2xs leading-4 text-muted-foreground">
+        Each 9×9 puzzle has a unique solution. Boards automatically fit within this page’s margins.
+        Changing the board count keeps the remaining puzzles.
+      </p>
+    </>
+  )
+}
+
+function createCustomPage(type: string): Settings["customPages"][number] | null {
+  switch (type) {
+    case "title":
+      return { type, title: "", subtitle: "" }
+    case "index":
+      return { type, title: "Index", entries: "" }
+    case "sudoku":
+      return { type, difficulty: "easy", boards: [generateSudoku("easy")] }
+    default:
+      return null
+  }
+}
+
 function PageTab({ settings, currentPage, onSettingsChange }: PagePropertiesProps) {
   const customPage = settings.customPages[currentPage]
+  const [error, setError] = useState("")
   function setCustomPage(page: Settings["customPages"][number] | null) {
     const nextCustomPages = { ...settings.customPages }
     if (page) nextCustomPages[currentPage] = page
@@ -635,14 +723,24 @@ function PageTab({ settings, currentPage, onSettingsChange }: PagePropertiesProp
             id="page-template"
             value={customPage?.type ?? "default"}
             onChange={(value) => {
-              if (value === "title") setCustomPage({ type: "title", title: "", subtitle: "" })
-              else if (value === "index")
-                setCustomPage({ type: "index", title: "Index", entries: "" })
-              else setCustomPage(null)
+              try {
+                setCustomPage(createCustomPage(value))
+                setError("")
+              } catch (error) {
+                setError(
+                  error instanceof Error ? error.message : "Could not generate puzzles. Try again.",
+                )
+              }
             }}
-            options={{ default: "Default page", title: "Title page", index: "Index page" }}
+            options={{
+              default: "Default page",
+              title: "Title page",
+              index: "Index page",
+              sudoku: "Sudoku",
+            }}
           />
         </Field>
+        <SudokuError message={error} />
         {customPage?.type === "title" &&
           (
             [
@@ -685,9 +783,12 @@ function PageTab({ settings, currentPage, onSettingsChange }: PagePropertiesProp
             </Field>
           </>
         )}
+        {customPage?.type === "sudoku" && (
+          <SudokuControls key={currentPage} page={customPage} onChange={setCustomPage} />
+        )}
         <p className="text-2xs leading-4 text-muted-foreground">
-          Title and index templates replace the pattern and border. Title templates hide page
-          numbers by default; appearance overrides are retained.
+          Title, index, and Sudoku templates replace the pattern and border. Title templates hide
+          page numbers by default; appearance overrides are retained.
         </p>
       </section>
     </TabsContent>
