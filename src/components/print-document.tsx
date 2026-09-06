@@ -37,7 +37,11 @@ export function PrintDocument({ settings, pass }: { settings: Settings; pass: Pr
   const punchGuide = pass === "guide" || (pass === "all" && document.guide) ? document.guide : null
 
   return (
-    <div className="print-root" aria-hidden="true">
+    <div
+      className="print-root"
+      aria-hidden="true"
+      data-divider={settings.pageDivider ? "on" : "off"}
+    >
       <style>{`@page { size: ${paper.width}mm ${paper.height}mm; margin: 0; }`}</style>
       {sides.map((side) => (
         <section

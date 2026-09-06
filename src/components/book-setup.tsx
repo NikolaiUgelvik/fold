@@ -139,6 +139,13 @@ function PaperTab({ settings, document, onSettingsChange }: BookSetupProps) {
             mm
           </p>
         </div>
+        <CheckboxField
+          className="mt-3"
+          checked={settings.pageDivider}
+          onChange={(checked) => onSettingsChange("pageDivider", checked)}
+          title="Page divider line"
+          description="A thin line at the fold between the two pages of each sheet."
+        />
       </section>
     </TabsContent>
   )
@@ -204,7 +211,7 @@ function BindingTab({ settings, document, onSettingsChange }: BookSetupProps) {
               label="Signatures"
               value={signatureCount}
               min={1}
-              max={12}
+              max={32}
               disabled={settings.binding === "saddle"}
               onChange={(value) => onSettingsChange("signatures", value)}
             />
@@ -213,7 +220,7 @@ function BindingTab({ settings, document, onSettingsChange }: BookSetupProps) {
             label={settings.binding === "yotsume" ? "Sheets" : "Sheets each"}
             value={settings.sheets}
             min={1}
-            max={12}
+            max={32}
             onChange={(value) => onSettingsChange("sheets", value)}
           />
         </div>

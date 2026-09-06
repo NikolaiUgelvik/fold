@@ -31,6 +31,7 @@ function usePrintDialog(
 
 const documentNames: Record<Settings["pattern"], string> = {
   dots: "Dot-grid notebook",
+  cross: "Cross-grid notebook",
   lines: "Ruled notebook",
   grid: "Square-grid notebook",
   graph: "Graph-paper notebook",

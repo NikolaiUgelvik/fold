@@ -142,7 +142,8 @@ function PaperColorSection({ settings, onSettingsChange }: AppearanceSectionProp
 function patternSections(pattern: Settings["pattern"], overlayPattern: Settings["overlayPattern"]) {
   return {
     dots: pattern === "dots",
-    lines: pattern !== "dots" && pattern !== "blank",
+    cross: pattern === "cross",
+    lines: pattern !== "dots" && pattern !== "cross" && pattern !== "blank",
     fourLine: pattern === "fourLine",
     slant: pattern === "slant" || overlayPattern === "slant",
     graph: pattern === "graph",
@@ -198,6 +199,55 @@ function DotPatternSection({ settings, onSettingsChange }: AppearanceSectionProp
         label="Dot color"
         value={settings.dotColor}
         onChange={(value) => onSettingsChange("dotColor", value)}
+      />
+    </>
+  )
+}
+
+function CrossPatternSection({ settings, onSettingsChange }: AppearanceSectionProps) {
+  return (
+    <>
+      <FieldRow>
+        {(
+          [
+            ["crossHorizontalLength", "Horizontal length (mm)"],
+            ["crossVerticalLength", "Vertical length (mm)"],
+          ] as const
+        ).map(([setting, label]) => (
+          <NumberSettingField
+            key={setting}
+            setting={setting}
+            label={label}
+            min={0.1}
+            max={10}
+            step={0.1}
+            settings={settings}
+            onSettingsChange={onSettingsChange}
+          />
+        ))}
+      </FieldRow>
+      <p className="text-2xs leading-4 text-muted-foreground">
+        Lengths span each full stroke, from end to end.
+      </p>
+      <FieldRow>
+        {(
+          [
+            { setting: "crossLineWidth", label: "Thickness (mm)", min: 0.05, max: 1, step: 0.05 },
+            { setting: "crossSpacing", label: "Spacing (mm)", min: 2, max: 20, step: 0.5 },
+          ] as const
+        ).map((field) => (
+          <NumberSettingField
+            key={field.setting}
+            {...field}
+            settings={settings}
+            onSettingsChange={onSettingsChange}
+          />
+        ))}
+      </FieldRow>
+      <ColorField
+        label="Cross color"
+        value={settings.crossColor}
+        onChange={(value) => onSettingsChange("crossColor", value)}
       />
     </>
   )
@@ -323,6 +373,7 @@ function StyleTab({ settings, onSettingsChange }: PagePropertiesProps) {
           onChange={(value) => onSettingsChange("pattern", value as Settings["pattern"])}
           options={{
             dots: "Dot grid",
+            cross: "Cross grid (+)",
             lines: "Ruled lines",
             grid: "Square grid",
             graph: "Graph paper",
@@ -348,6 +399,9 @@ function StyleTab({ settings, onSettingsChange }: PagePropertiesProps) {
         </Field>
         {sections.dots && (
           <DotPatternSection settings={settings} onSettingsChange={onSettingsChange} />
+        )}
+        {sections.cross && (
+          <CrossPatternSection settings={settings} onSettingsChange={onSettingsChange} />
         )}
         {sections.lines && (
           <LinePatternSection settings={settings} onSettingsChange={onSettingsChange} />

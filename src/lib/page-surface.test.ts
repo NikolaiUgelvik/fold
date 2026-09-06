@@ -38,6 +38,32 @@ test("slant overlay bounds are full width without changing the base pattern boun
   }
 })
 
+test("cross bounds preserve arms longer than their spacing without inheriting major dots", () => {
+  const surface = createPageSurface(
+    makeSettings({
+      pattern: "cross",
+      crossHorizontalLength: 8,
+      crossVerticalLength: 2,
+      crossLineWidth: 0.4,
+      crossSpacing: 5,
+      dotSpacing: 7,
+      dotMajorEvery: 4,
+    }),
+    1,
+    [],
+    false,
+  )
+  const { patternBounds, patternStartX, patternStartY, spacing, majorBounds } = surface.metrics
+  assert.equal(spacing, 5)
+  const lastX = patternStartX + Math.floor((patternBounds.width - 8) / spacing) * spacing
+  const lastY = patternStartY + Math.floor((patternBounds.height - 8) / spacing) * spacing
+  assert.ok(patternBounds.x <= patternStartX - 4)
+  assert.ok(patternBounds.y <= patternStartY - 1)
+  assert.ok(patternBounds.x + patternBounds.width >= lastX + 4)
+  assert.ok(patternBounds.y + patternBounds.height >= lastY + 1)
+  assert.ok(Object.values(majorBounds).every(Number.isFinite))
+})
+
 test("derives the shared physical and SVG page art from resolved page settings", () => {
   const surface = createPageSurface(
     makeSettings({

@@ -11,12 +11,17 @@ export type IdentifiedHoleSet = Omit<HoleSet, "groups"> & {
 }
 
 export interface PageAppearance {
-  pattern: "dots" | "lines" | "grid" | "graph" | "fourLine" | "slant" | "blank"
+  pattern: "dots" | "cross" | "lines" | "grid" | "graph" | "fourLine" | "slant" | "blank"
   dotSize: number
   dotSpacing: number
   dotMajorEvery: number
   dotMajorSize: number
   dotColor: string
+  crossHorizontalLength: number
+  crossVerticalLength: number
+  crossSpacing: number
+  crossLineWidth: number
+  crossColor: string
   lineWidth: number
   lineSpacing: number
   lineColor: string
@@ -59,6 +64,11 @@ const pageAppearanceKeyMap = {
   dotMajorEvery: true,
   dotMajorSize: true,
   dotColor: true,
+  crossHorizontalLength: true,
+  crossVerticalLength: true,
+  crossSpacing: true,
+  crossLineWidth: true,
+  crossColor: true,
   lineWidth: true,
   lineSpacing: true,
   lineColor: true,
@@ -93,6 +103,7 @@ export interface Settings extends PageAppearance {
   punchHoleSets: IdentifiedHoleSet[]
   paper: PaperId
   previewPaperColor: string
+  pageDivider: boolean
   signatures: number
   sheets: number
   firstPage: number
@@ -203,6 +214,7 @@ export const initialSettings: Settings = {
   ],
   paper: "a4",
   previewPaperColor: "#fffef9",
+  pageDivider: true,
   signatures: 4,
   sheets: 4,
   pattern: "dots",
@@ -210,7 +222,12 @@ export const initialSettings: Settings = {
   dotSpacing: 5,
   dotMajorEvery: 0,
   dotMajorSize: 0.7,
-  dotColor: "#aeb4b6",
+  dotColor: "#8f989a",
+  crossHorizontalLength: 1,
+  crossVerticalLength: 1,
+  crossSpacing: 5,
+  crossLineWidth: 0.2,
+  crossColor: "#8f989a",
   lineWidth: 0.2,
   lineSpacing: 5,
   lineColor: "#aeb9c4",

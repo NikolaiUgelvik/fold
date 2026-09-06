@@ -43,6 +43,18 @@ function PatternContent({
       <circle cx={spacing / 2} cy={spacing / 2} r={settings.dotSize / 2} fill={settings.dotColor} />
     )
   }
+  if (pattern === "cross") {
+    const center = spacing / 2
+    return (
+      <path
+        d={`M${center - settings.crossHorizontalLength / 2} ${center}h${settings.crossHorizontalLength}M${center} ${center - settings.crossVerticalLength / 2}v${settings.crossVerticalLength}`}
+        fill="none"
+        stroke={settings.crossColor}
+        strokeWidth={settings.crossLineWidth}
+        strokeLinecap="butt"
+      />
+    )
+  }
   if (pattern === "slant") {
     return (
       <line

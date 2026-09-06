@@ -17,6 +17,11 @@ npm test
 npm run build
 ```
 
+Choose **Cross grid (+)** under **Style → Page pattern** for a grid of plus marks.
+Set horizontal and vertical full stroke lengths independently, along with spacing,
+thickness, and color. These settings support both all-page defaults and individual
+page overrides, and are preserved in saved projects, previews, and PDF output.
+
 To export, choose a print pass, select **Export PDF**, then use actual size in
 the print dialog. For automatic duplex, choose **All sides** and short-edge
 flipping, except for full-sheet portrait Japanese stab pages, which use

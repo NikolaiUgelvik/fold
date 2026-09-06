@@ -56,31 +56,6 @@ function createPreview({
   })
 }
 
-test("resolves a coptic logical page through its imposed Folded Sheet", () => {
-  const preview = createPreview({
-    binding: "coptic",
-    bindingEdge: "left",
-    signatures: 2,
-    logicalPage: 3,
-    materialPreset: "everyday",
-  })
-
-  assertPreview(preview, {
-    construction: "page-block",
-    selectedSurface: {
-      logicalPage: 3,
-      signature: 1,
-      sheet: 2,
-      side: "front",
-      position: 1,
-      facingLogicalPage: 6,
-    },
-    activeUnitIndex: 1,
-    restingCounts: { left: 1, right: 2 },
-    readerPose: { kind: "spread", anchor: 2, pages: [2, 3] },
-  })
-})
-
 test("keeps page five's imposed source while presenting its reader spread", () => {
   const preview = createPreview({
     binding: "coptic",

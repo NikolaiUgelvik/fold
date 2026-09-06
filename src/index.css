@@ -105,6 +105,9 @@
     height: calc(100svh - 72px);
     grid-template-columns: 292px minmax(440px, 1fr) 312px;
   }
+  .preview-page-size {
+    max-height: var(--preview-max-height);
+  }
 }
 
 [data-slot="select-content"] {
@@ -181,5 +184,8 @@
   }
   .paper-page + .paper-page {
     box-shadow: var(--page-divider, inset 0.12mm 0 #ddd);
+  }
+  .print-root[data-divider="off"] .paper-page {
+    box-shadow: none;
   }
 }

@@ -7,6 +7,19 @@ import { getPageBindingEdge, getPunchHoles, type HoleSet } from "./punch-holes.t
 import { resolvePageAppearance, type Settings } from "./settings.ts"
 
 function getPatternBasics(settings: Settings) {
+  if (settings.pattern === "cross") {
+    return {
+      spacing: settings.crossSpacing,
+      majorSpacing: 0,
+      patternRadius:
+        Math.max(
+          settings.crossHorizontalLength,
+          settings.crossVerticalLength,
+          settings.crossLineWidth,
+        ) / 2,
+      boundsSpacing: settings.crossSpacing,
+    }
+  }
   const spacing = settings.pattern === "dots" ? settings.dotSpacing : settings.lineSpacing
   const majorEvery =
     settings.pattern === "graph" ? settings.graphMajorEvery : settings.dotMajorEvery
@@ -39,7 +52,7 @@ function getMajorBounds(
   majorSpacing: number,
   patternBounds: ReturnType<typeof getCenteredPatternBounds>,
 ) {
-  if (settings.dotMajorEvery <= 0) return patternBounds
+  if (settings.pattern !== "dots" || settings.dotMajorEvery <= 0) return patternBounds
   const majorRadius = settings.dotMajorSize / 2
   return {
     x: patternStartX - majorRadius,

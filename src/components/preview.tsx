@@ -76,6 +76,7 @@ const pageTypeIcons: Record<
   { icon: LucideIcon; label: string }
 > = {
   dots: { icon: Grip, label: "dotted page" },
+  cross: { icon: Plus, label: "cross-grid page" },
   lines: { icon: AlignJustify, label: "lined page" },
   grid: { icon: Grid2X2, label: "grid page" },
   graph: { icon: Grid3X3, label: "graph paper page" },
@@ -385,7 +386,7 @@ const PreviewPage = (props: PreviewContentProps) => {
   return (
     <div className="flex min-h-135 flex-1 overflow-auto p-4 lg:p-6 xl:min-h-0">
       <div
-        className="relative m-auto shrink-0 xl:max-h-[var(--preview-max-height)]"
+        className="preview-page-size relative m-auto shrink-0"
         style={
           {
             aspectRatio: showPunchGuide

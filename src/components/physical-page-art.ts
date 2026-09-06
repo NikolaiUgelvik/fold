@@ -37,11 +37,14 @@ uniform float uDotRadius;
 uniform float uMajorDotRadius;
 uniform float uLineWidth;
 uniform float uMajorLineWidth;
+uniform vec2 uCrossLengths;
+uniform float uCrossLineWidth;
 uniform float uFourLineGap;
 uniform float uSlantAngle;
 uniform vec3 uDotColor;
 uniform vec3 uLineColor;
 uniform vec3 uGraphMajorColor;
+uniform vec3 uCrossColor;
 uniform vec4 uBorderRect;
 uniform float uBorderWidth;
 uniform vec3 uBorderColor;
@@ -71,6 +74,14 @@ float lineMask(float distance, float width) {
 float circleMask(float distance, float radius) {
   float edge = max(fwidth(distance), 0.015);
   return 1.0 - smoothstep(radius - edge, radius + edge, distance);
+}
+
+float repeatedRectangleDistance(vec2 distance, vec2 size) {
+  vec2 edge = distance - size * 0.5;
+  // An axis covered by adjacent tiles has no exposed edge at the tile boundary.
+  if (size.x >= uSpacing) edge.x = -uSpacing;
+  if (size.y >= uSpacing) edge.y = -uSpacing;
+  return length(max(edge, 0.0)) + min(max(edge.x, edge.y), 0.0);
 }
 
 void over(inout vec4 painted, vec3 color, float alpha) {
@@ -153,6 +164,19 @@ void main() {
     over(painted, uLineColor, lineMask(slantDistance(point), uLineWidth));
   }
 
+  if (patternArea > 0.0 && uPattern == 7) {
+    vec2 distance = vec2(
+      nearestGridDistance(point.x, uPatternStart.x, uSpacing),
+      nearestGridDistance(point.y, uPatternStart.y, uSpacing)
+    );
+    float crossDistance = min(
+      repeatedRectangleDistance(distance, vec2(uCrossLengths.x, uCrossLineWidth)),
+      repeatedRectangleDistance(distance, vec2(uCrossLineWidth, uCrossLengths.y))
+    );
+    float edge = max(fwidth(crossDistance), 0.015);
+    over(painted, uCrossColor, 1.0 - smoothstep(-edge, edge, crossDistance));
+  }
+
   if (uSlantOverlay == 1 && insideRect(point, uOverlayBounds) > 0.0) {
     over(painted, uLineColor, lineMask(slantDistance(point), uLineWidth));
   }
@@ -218,7 +242,7 @@ function createCoordinateTexture(coordinates: number[][]) {
 
 function patternId(surface: PageSurface) {
   if (surface.metrics.customPage) return 0
-  return { blank: 0, dots: 1, lines: 2, grid: 3, graph: 4, fourLine: 5, slant: 6 }[
+  return { blank: 0, dots: 1, lines: 2, grid: 3, graph: 4, fourLine: 5, slant: 6, cross: 7 }[
     surface.appearance.pattern
   ]
 }
@@ -267,11 +291,16 @@ function createPageArtMaterial(surface: PageSurface, flipX: boolean, renderSide:
       uMajorDotRadius: { value: appearance.dotMajorSize / 2 },
       uLineWidth: { value: appearance.lineWidth },
       uMajorLineWidth: { value: appearance.graphMajorLineWidth },
+      uCrossLengths: {
+        value: new THREE.Vector2(appearance.crossHorizontalLength, appearance.crossVerticalLength),
+      },
+      uCrossLineWidth: { value: appearance.crossLineWidth },
       uFourLineGap: { value: appearance.fourLineGap },
       uSlantAngle: { value: appearance.slantAngle },
       uDotColor: { value: new THREE.Color(appearance.dotColor) },
       uLineColor: { value: new THREE.Color(appearance.lineColor) },
       uGraphMajorColor: { value: new THREE.Color(appearance.graphMajorColor) },
+      uCrossColor: { value: new THREE.Color(appearance.crossColor) },
       uBorderRect: {
         value: new THREE.Vector4(
           metrics.borderX,
