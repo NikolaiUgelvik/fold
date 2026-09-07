@@ -46,7 +46,6 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-canvas: #edeae1;
-  --color-primary-hover: #3c3933;
   --color-accent-strong: #a96528;
   --color-info: #446a72;
   --color-paper: #fffef9;
@@ -59,15 +58,11 @@
   --text-display: 1.75rem;
   --tracking-label-tight: 0.09em;
   --tracking-label: 0.1em;
-  --tracking-label-wide: 0.11em;
-  --tracking-section: 0.14em;
-  --shadow-book: inset 5px 0 #e7c895;
   --shadow-paper: 0 18px 34px rgba(55, 49, 35, 0.14);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  --radius-book: 2px 8px 8px 2px;
 }
 
 @layer base {
@@ -94,22 +89,223 @@
   transition-property: color, box-shadow;
 }
 
+.editor-app {
+  display: flex;
+  height: 100svh;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-canvas);
+}
+.workspace-header {
+  display: grid;
+  gap: 8px;
+  padding: 10px 16px;
+  flex-shrink: 0;
+}
+.workspace-header > div:last-child {
+  justify-content: flex-end;
+}
+.editor-app [data-slot="button"],
+.editor-app select,
+.editor-app input:not([type="checkbox"], [type="radio"], [type="range"]),
+.editor-app [role="tab"] {
+  min-height: 44px;
+}
+.workspace-header #workspace-name {
+  min-height: 32px;
+}
+.workspace-grid {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  grid-template-rows: minmax(0, 1fr) 32px minmax(0, var(--sheet-height));
+}
+.preview-panel {
+  grid-row: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.workspace-sheet {
+  grid-row: 3;
+  grid-column: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--background);
+}
+.page-selection-disclosure {
+  min-height: 44px;
+  overflow: auto;
+  border-bottom: 1px solid var(--border);
+}
+.page-selection-disclosure[open] {
+  flex: 0 1 auto;
+}
+.page-navigator-list {
+  min-height: 100px;
+}
+.page-selection-help,
+.selection-edit-hint {
+  display: none;
+}
+.navigator-panel {
+  overflow: hidden;
+}
+.mobile-sheet-resizer {
+  display: flex;
+  grid-row: 2;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border-block: 1px solid var(--border);
+  background: var(--background);
+  font-size: 12px;
+}
+.mobile-sheet-resizer input {
+  width: 120px;
+  height: 28px;
+  accent-color: var(--ring);
+}
+.mobile-workspace-nav {
+  display: grid;
+  flex-shrink: 0;
+  grid-template-columns: repeat(3, 1fr);
+  border-top: 1px solid var(--border);
+  background: var(--background);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.mobile-workspace-nav button {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.workspace-notice {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--background);
+  padding: 6px 16px;
+  font-size: 12px;
+}
+.workspace-notice button {
+  min-height: 32px;
+  text-decoration: underline;
+}
+.workspace-dialog {
+  width: min(620px, calc(100vw - 24px));
+  max-width: none;
+  max-height: 92svh;
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: 0 24px 80px #25231f40;
+}
+.workspace-dialog::backdrop {
+  background: #25231f70;
+}
+.print-dialog {
+  width: min(1100px, calc(100vw - 24px));
+}
+.print-sheet-preview[data-layout="side-by-side"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.print-sheet-preview[data-layout="stacked"] {
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+.print-sheet-preview[data-divider="on"] > div + div {
+  box-shadow: inset 1px 0 #ddd;
+}
+.print-sheet-preview[data-divider="on"][data-layout="stacked"] > div + div {
+  box-shadow: inset 0 1px #ddd;
+}
+.page-inspector button[aria-label^="Reset"] {
+  min-width: 44px;
+  min-height: 44px;
+}
+.workspace-sheet .text-2xs,
+.workspace-sheet .text-caption,
+.workspace-sheet .text-label,
+.workspace-dialog .text-2xs,
+.workspace-dialog .text-caption,
+.workspace-dialog .text-label {
+  font-size: 12px;
+  line-height: 1.5;
+}
+.workspace-sheet .text-3xs,
+.workspace-dialog .text-3xs {
+  font-size: 10px;
+}
+.preview-toolbar {
+  flex-shrink: 0;
+}
+
 @media (min-width: 64rem) {
-  .app-grid {
-    grid-template-columns: 292px minmax(0, 1fr);
+  .workspace-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    min-height: 76px;
+    padding: 10px 20px;
+  }
+  .workspace-header > div:first-child {
+    max-width: 520px;
+  }
+  .workspace-grid {
+    grid-template-columns: clamp(230px, 18vw, 280px) minmax(0, 1fr) 340px;
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .workspace-grid > .navigator-panel {
+    display: block;
+    grid-column: 1;
+    grid-row: 1;
+    border-right: 1px solid var(--border);
+  }
+  .preview-panel {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .workspace-grid > .inspector-panel {
+    display: block;
+    grid-column: 3;
+    grid-row: 1;
+    border-left: 1px solid var(--border);
+  }
+  .mobile-workspace-nav,
+  .mobile-sheet-resizer,
+  .setup-panel {
+    display: none;
+  }
+  .page-selection-help,
+  .selection-edit-hint {
+    display: block;
   }
 }
 
-@media (min-width: 80rem) {
-  .app-grid {
-    height: calc(100svh - 72px);
-    grid-template-columns: 292px minmax(440px, 1fr) 312px;
+@media (max-width: 63.999rem) {
+  .editor-app[data-mobile-panel="edit"] .navigator-panel,
+  .editor-app[data-mobile-panel="setup"] .navigator-panel,
+  .editor-app[data-mobile-panel="pages"] .inspector-panel,
+  .editor-app[data-mobile-panel="setup"] .inspector-panel {
+    display: none;
   }
-  .preview-page-size {
-    max-height: var(--preview-max-height);
+  .page-selection-disclosure[open] ~ .page-navigator-list {
+    display: none;
   }
 }
-
 [data-slot="select-content"] {
   --select-x: 0;
   --select-y: 0;
@@ -149,6 +345,10 @@
 @media print {
   body {
     background: white;
+  }
+  dialog,
+  dialog::backdrop {
+    display: none;
   }
   .screen-app {
     display: none;

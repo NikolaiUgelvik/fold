@@ -17,32 +17,69 @@ npm test
 npm run build
 ```
 
-Choose **Cross grid (+)** under **Style → Page pattern** for a grid of plus marks.
-Set horizontal and vertical full stroke lengths independently, along with spacing,
-thickness, and color. These settings support both all-page defaults and individual
-page overrides, and are preserved in saved projects, previews, and PDF output.
+## Editing a notebook
 
-Choose **Sudoku** under **Content → Template** to place 1–6 generated 9×9 puzzles
-on the current page. Boards fit automatically within the page margins, with bold
-3×3 box boundaries. Every generated puzzle has a unique solution. Increasing the
-board count keeps existing puzzles; **Generate new puzzles** replaces them.
-Puzzle contents are preserved in saved projects, both previews, and PDF output.
+The Pages navigator is the editing target. Click a page, Shift-click a range,
+or Ctrl/Cmd-click to toggle individual pages. **Select pages…** accepts ranges
+such as `3–16,21–24`, `all`, `odd`, and `even`, and includes Signature selection
+and a direct page jump. **Select multiple** exposes checkboxes for touch.
+Arrow keys navigate pages; Shift extends the selection and Space toggles a page.
 
-Set **Difficulty** to **Easy** (single-candidate cells), **Medium** (also needs
-hidden singles), or **Hard** (needs techniques beyond singles). Changing difficulty
-regenerates the current page's boards; added boards use the selected level.
-Difficulty is saved per page. Older saved puzzles stay unchanged and default to
-Easy for future generation.
+Style, Layout, and Content all act on the same selection. Mixed values display
+**Mixed**; changing a field applies only that property, preserving the other
+values on each page. Selecting all pages really changes every selected page.
+**Notebook defaults** instead changes inherited appearance while preserving
+page customizations. Each customized appearance field has its own **Reset**;
+resetting one field does not discard other customizations or content.
 
-To export, choose a print pass, select **Export PDF**, then use actual size in
-the print dialog. For automatic duplex, choose **All sides** and short-edge
-flipping, except for full-sheet portrait Japanese stab pages, which use
-long-edge flipping.
+Choose **Cross grid (+)** under **Style → Pattern** for plus marks with
+independent horizontal/vertical stroke lengths, spacing, thickness, and color.
+Title, Index, and Sudoku templates replace the pattern and border, so those
+controls are hidden for selections containing these templates.
 
-For manual duplex, print **Fronts only**, reload the stack without reordering
-it, then print the backs. Choose **Backs reversed** if the last front sheet is
-on top of the printed stack; otherwise choose **Backs only**. If you configured
-a separate punch guide, export it afterward with **Punch guide only**.
+Choose **Sudoku** under **Content → Template** to generate 1–6 puzzles per
+selected page. **Generate unique puzzles per page** gives pages different
+puzzles; **Copy page … puzzles to selection** intentionally copies the focused
+page's puzzles. Increasing board count preserves each page's existing puzzles.
+Every puzzle has a unique solution and fits within its page's margins.
+
+Difficulty is saved per page: **Easy** uses single-candidate cells, **Medium**
+also needs hidden singles, and **Hard** needs techniques beyond singles.
+Changing difficulty replaces each selected page's puzzles while retaining its
+own board count. Existing saved puzzles remain unchanged until edited.
+
+Use **Page**, **Spread**, or **Physical** to inspect the notebook. **Fit**
+resets the flat preview zoom. Binding, paper, and punch guides are under
+**Notebook setup**. Preview paper colors do not paint PDF backgrounds.
+On mobile, **Pages / Edit / Setup** switch the lower panel while the preview
+stays visible; **Panel height** adjusts the space for editing.
+
+**Undo / Redo** (Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z, or Ctrl+Y) work across
+notebook edits. A bulk change is one action; continuous numeric/text editing
+is grouped while the input remains focused.
+
+The named draft recovers automatically in the same browser. **Projects → Save
+a copy** creates a named snapshot without overwriting an existing copy.
+New/open actions protect changes that are not backed by a saved copy.
+Drafts and copies are local only: they are not uploaded or synced, and clearing
+browser storage removes them. Storage failures are shown in the header.
+
+## Printing and PDF
+
+Open **Print / PDF** to check paper dimensions, output count, duplex instructions,
+and actual sheet previews across all Signatures. **Open print dialog** invokes
+the browser; choose a printer or **Save as PDF** there. Use actual size / 100%
+and disable browser headers and footers.
+
+For automatic duplex, choose **All sides** and short-edge flipping, except for
+full-sheet portrait Japanese stab pages, which use long-edge flipping.
+For manual duplex, print **Fronts only** single-sided, reload the stack without
+reordering it, then print the backs. Choose **Backs · reversed order** if the
+last front sheet is on top; otherwise choose **Backs · same order**.
+Test one sheet to establish your printer's feed orientation.
+
+Separate punch guides are excluded by default. Append one explicitly to
+**All sides**, or print it independently with **Punch guide only**.
 
 For Japanese stab binding, stack full sheets in page order before sewing the
 four-hole pattern. If two-up printing is enabled, cut each sheet in half first.

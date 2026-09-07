@@ -1,6 +1,7 @@
 import { PageSvg } from "@/components/notebook-page"
-import { getPrintSides, type PrintPass } from "@/lib/imposition"
+import type { PrintPass } from "@/lib/imposition"
 import { createNotebookDocument, createPrintPageViewModel } from "@/lib/notebook-document"
+import { createPrintPlan } from "@/lib/print-plan"
 import type { HoleSet } from "@/lib/punch-holes"
 import type { Settings } from "@/lib/settings"
 
@@ -30,12 +31,18 @@ function PrintPage({
   )
 }
 
-export function PrintDocument({ settings, pass }: { settings: Settings; pass: PrintPass }) {
+export function PrintDocument({
+  settings,
+  pass,
+  includeGuide,
+}: {
+  settings: Settings
+  pass: PrintPass
+  includeGuide: boolean
+}) {
   const document = createNotebookDocument(settings)
   const { paper, layout } = document.pageLayout
-  const sides = getPrintSides(document.sides, pass)
-  const punchGuide = pass === "guide" || (pass === "all" && document.guide) ? document.guide : null
-
+  const sides = createPrintPlan(document, settings, pass, includeGuide)
   return (
     <div
       className="print-root"
@@ -55,33 +62,15 @@ export function PrintDocument({ settings, pass }: { settings: Settings; pass: Pr
         >
           {side.pages.map((page) => (
             <PrintPage
-              settings={settings}
+              settings={side.settings}
               punchHoleSets={document.punchHoleSets}
               logicalPage={page}
-              showPunchHoles={document.punchHolePages.has(page)}
+              showPunchHoles={side.punchHolePages.has(page)}
               key={page}
             />
           ))}
         </section>
       ))}
-      {punchGuide && (
-        <section
-          className="print-side"
-          data-layout={layout}
-          data-side="punch-guide"
-          style={{ width: `${paper.width}mm`, height: `${paper.height}mm` }}
-        >
-          {punchGuide.pages.map((page) => (
-            <PrintPage
-              settings={punchGuide.settings}
-              punchHoleSets={document.punchHoleSets}
-              logicalPage={page}
-              showPunchHoles
-              key={page}
-            />
-          ))}
-        </section>
-      )}
     </div>
   )
 }

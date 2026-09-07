@@ -1,39 +1,15 @@
-import {
-  AlignJustify,
-  ArrowLeft,
-  ArrowRight,
-  ArrowUpRight,
-  File,
-  Grid2X2,
-  Grid3X3,
-  Grip,
-  Heading1,
-  List,
-  type LucideIcon,
-  Minus,
-  Plus,
-  Rows4,
-  Slash,
-} from "lucide-react"
-import {
-  type CSSProperties,
-  lazy,
-  memo,
-  type ReactNode,
-  Suspense,
-  useCallback,
-  useMemo,
-  useState,
-} from "react"
+import { ArrowLeft, ArrowRight, Maximize, Minus, Plus } from "lucide-react"
+import { lazy, Suspense, useLayoutEffect, useRef, useState } from "react"
 
 import { PageSvg } from "@/components/notebook-page"
 import { Button } from "@/components/ui/button"
-import { type ImpositionSide, isFoldedBinding } from "@/lib/imposition"
-import { type createNotebookDocument, createPunchGuideViewModel } from "@/lib/notebook-document"
+import { isFoldedBinding } from "@/lib/imposition"
+import type { NotebookDocument } from "@/lib/notebook-document"
+import { createPunchGuideViewModel } from "@/lib/notebook-document"
 import { formatMillimeters } from "@/lib/paper"
-import { type MaterialPresetId, stepReaderPose } from "@/lib/physical-preview"
+import { getReaderPose, type MaterialPresetId, stepReaderPose } from "@/lib/physical-preview"
 import { usesSeparatePunchGuide } from "@/lib/punch-holes"
-import { countPageAppearanceOverrides, resolvePageAppearance, type Settings } from "@/lib/settings"
+import type { Settings } from "@/lib/settings"
 
 const PhysicalDesignPreview = lazy(() =>
   import("@/components/physical-design-preview").then(({ PhysicalDesignPreview }) => ({
@@ -43,120 +19,21 @@ const PhysicalDesignPreview = lazy(() =>
 
 export type PreviewProps = {
   settings: Settings
-  document: ReturnType<typeof createNotebookDocument>
+  document: NotebookDocument
   currentPage: number
   onCurrentPageChange: (page: number) => void
   previewPunchGuide: boolean
   onPreviewPunchGuideChange: (shown: boolean) => void
 }
 
-type PreviewMode = "2d" | "physical"
+type PreviewMode = "page" | "spread" | "physical"
 
-type PreviewContentProps = PreviewProps & {
+type PreviewToolbarProps = PreviewProps & {
   physicalPreviewSupported: boolean
   zoom: number
   onZoomChange: (zoom: number) => void
   mode: PreviewMode
   onModeChange: (mode: PreviewMode) => void
-  materialPreset: MaterialPresetId
-  onMaterialPresetChange: (preset: MaterialPresetId) => void
-  opening: number
-  onOpeningChange: (opening: number) => void
-  showPlan: boolean
-  onShowPlanChange: (shown: boolean) => void
-  guidePreview: ReturnType<typeof createPunchGuideViewModel>
-}
-
-function supportsPhysicalPreview() {
-  return Boolean(document.createElement("canvas").getContext("webgl2"))
-}
-
-const pageTypeIcons: Record<
-  Settings["pattern"] | Settings["customPages"][number]["type"],
-  { icon: LucideIcon; label: string }
-> = {
-  dots: { icon: Grip, label: "dotted page" },
-  cross: { icon: Plus, label: "cross-grid page" },
-  lines: { icon: AlignJustify, label: "lined page" },
-  grid: { icon: Grid2X2, label: "grid page" },
-  graph: { icon: Grid3X3, label: "graph paper page" },
-  fourLine: { icon: Rows4, label: "four-line page" },
-  slant: { icon: Slash, label: "slant-line page" },
-  blank: { icon: File, label: "blank page" },
-  title: { icon: Heading1, label: "title page" },
-  index: { icon: List, label: "index page" },
-  sudoku: { icon: Grid3X3, label: "Sudoku page" },
-}
-
-const PageThumbnail = memo(function PageThumbnail({
-  settings,
-  logicalPage,
-  overrideCount,
-  selected,
-  onSelect,
-}: {
-  settings: Settings
-  logicalPage: number
-  overrideCount: number
-  selected: boolean
-  onSelect: (page: number) => void
-}) {
-  const appearance = resolvePageAppearance(settings, logicalPage)
-  const pageType = settings.customPages[logicalPage]?.type ?? appearance.pattern
-  const { icon: Icon, label } = pageTypeIcons[pageType]
-
-  return (
-    <button
-      type="button"
-      className={`relative flex h-18 w-14 shrink-0 flex-col items-center justify-center gap-1 rounded-sm border bg-card text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring ${selected ? "border-ring text-foreground ring-1 ring-ring" : ""}`}
-      aria-label={`Logical page ${logicalPage}, displayed number ${appearance.pageNumberText}, ${label}${overrideCount > 0 ? `, ${overrideCount} appearance ${overrideCount === 1 ? "override" : "overrides"}` : ""}`}
-      aria-current={selected ? "page" : undefined}
-      onClick={() => onSelect(logicalPage)}
-    >
-      {overrideCount > 0 && (
-        <span
-          className="absolute top-0.5 right-0.5 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-0.5 text-3xs font-bold leading-none text-primary-foreground"
-          aria-hidden="true"
-        >
-          {overrideCount}
-        </span>
-      )}
-      <Icon className="size-5" aria-hidden />
-      <span className="max-w-12 truncate text-caption font-semibold text-foreground">
-        {appearance.pageNumberText}
-      </span>
-    </button>
-  )
-})
-
-function ToolbarTitle({
-  showPunchGuide,
-  mode,
-  pageName,
-  paperSize,
-  pageSize,
-}: {
-  showPunchGuide: boolean
-  mode: PreviewMode
-  pageName: string
-  paperSize: { width: number; height: number }
-  pageSize: { width: number; height: number }
-}) {
-  const size = showPunchGuide ? paperSize : pageSize
-  const title = showPunchGuide
-    ? "Punch guide"
-    : mode === "physical"
-      ? "Physical Design Preview"
-      : "Live preview"
-  return (
-    <div>
-      <p className="text-xs font-semibold">{title}</p>
-      <p className="mt-0.5 text-caption text-muted-foreground">
-        {showPunchGuide ? "Separate sheet" : pageName} · {formatMillimeters(size.width)} ×{" "}
-        {formatMillimeters(size.height)} mm
-      </p>
-    </div>
-  )
 }
 
 function PreviewModeSwitch({
@@ -164,59 +41,51 @@ function PreviewModeSwitch({
   physicalPreviewSupported,
   onModeChange,
   onPreviewPunchGuideChange,
-}: {
-  mode: PreviewMode
-  physicalPreviewSupported: boolean
-  onModeChange: (mode: PreviewMode) => void
-  onPreviewPunchGuideChange: (shown: boolean) => void
-}) {
+}: Pick<
+  PreviewToolbarProps,
+  "mode" | "physicalPreviewSupported" | "onModeChange" | "onPreviewPunchGuideChange"
+>) {
   return (
-    <fieldset className="flex items-center gap-1" aria-label="Preview mode">
-      <Button
-        variant="outline"
-        className="h-8 px-3 text-xs"
-        aria-pressed={mode === "2d"}
-        onClick={() => onModeChange("2d")}
-      >
-        2D
-      </Button>
-      <Button
-        variant="outline"
-        className="h-8 px-3 text-xs"
-        aria-pressed={mode === "physical"}
-        aria-describedby={physicalPreviewSupported ? undefined : "physical-preview-unsupported"}
-        disabled={!physicalPreviewSupported}
-        onClick={() => {
-          onPreviewPunchGuideChange(false)
-          onModeChange("physical")
-        }}
-      >
-        Physical
-      </Button>
+    <fieldset className="preview-mode-switch flex items-center gap-1" aria-label="Preview mode">
+      {(["page", "spread", "physical"] as const).map((value) => (
+        <Button
+          key={value}
+          variant="outline"
+          className="min-h-11 px-3 text-xs"
+          aria-pressed={mode === value}
+          disabled={value === "physical" && !physicalPreviewSupported}
+          title={
+            value === "physical" && !physicalPreviewSupported
+              ? "Physical Design Preview requires WebGL 2"
+              : undefined
+          }
+          onClick={() => {
+            onPreviewPunchGuideChange(false)
+            onModeChange(value)
+          }}
+        >
+          {value === "page" ? "Page" : value === "spread" ? "Spread" : "Physical"}
+        </Button>
+      ))}
       {!physicalPreviewSupported && (
-        <span id="physical-preview-unsupported" className="sr-only">
-          Physical Design Preview requires WebGL 2. The 2D preview is still available.
+        <span className="sr-only">
+          Physical Design Preview requires WebGL 2. Page and Spread previews are available.
         </span>
       )}
     </fieldset>
   )
 }
 
-function ZoomControls({
-  zoom,
-  onZoomChange,
-}: {
-  zoom: number
-  onZoomChange: (zoom: number) => void
-}) {
+function ZoomControls({ zoom, onZoomChange }: Pick<PreviewToolbarProps, "zoom" | "onZoomChange">) {
   return (
-    <div className="flex items-center gap-1">
+    <div className="preview-zoom-controls flex items-center gap-1">
       <Button
         variant="outline"
         size="icon-sm"
+        className="size-11"
         aria-label="Zoom out"
-        disabled={zoom === 50}
-        onClick={() => onZoomChange(Math.max(50, zoom - 10))}
+        disabled={zoom <= 50}
+        onClick={() => onZoomChange(Math.max(50, zoom - 25))}
       >
         <Minus />
       </Button>
@@ -226,40 +95,88 @@ function ZoomControls({
       <Button
         variant="outline"
         size="icon-sm"
+        className="size-11"
         aria-label="Zoom in"
-        disabled={zoom === 200}
-        onClick={() => onZoomChange(Math.min(200, zoom + 10))}
+        disabled={zoom >= 300}
+        onClick={() => onZoomChange(Math.min(300, zoom + 25))}
       >
         <Plus />
+      </Button>
+      <Button
+        variant="outline"
+        className="min-h-11 px-3 text-xs"
+        aria-label="Fit preview"
+        title="Reset zoom and fit to canvas"
+        onClick={() => onZoomChange(100)}
+      >
+        <Maximize aria-hidden="true" /> Fit
       </Button>
     </div>
   )
 }
 
-function PageNavigator({
+function PreviewTitle({
+  document,
   currentPage,
-  totalPages,
-  previousPage,
-  nextPage,
-  readerOrder,
-  onCurrentPageChange,
-}: {
-  currentPage: number
-  totalPages: number
-  previousPage: number
-  nextPage: number
-  readerOrder: boolean
-  onCurrentPageChange: (page: number) => void
+  mode,
+  guideShown,
+}: Pick<PreviewToolbarProps, "document" | "currentPage" | "mode"> & {
+  guideShown: boolean
 }) {
+  const pageSize = guideShown ? document.pageLayout.paper : document.pageSize
+  const shownPages =
+    mode === "spread" ? getReaderPose(currentPage, document.totalPages).pages : [currentPage]
+  const pageLabel =
+    shownPages.length === 2 ? `Pages ${shownPages.join("–")}` : `Page ${currentPage}`
   return (
-    <>
-      <span className="mr-1 hidden text-label text-muted-foreground sm:inline">
-        Page {currentPage} of {totalPages}
-      </span>
+    <div className="preview-toolbar-title text-caption text-muted-foreground">
+      <p className="font-semibold text-foreground">
+        {guideShown
+          ? "Punch guide"
+          : mode === "physical"
+            ? "Physical Design Preview"
+            : `${pageLabel} of ${document.totalPages}`}
+      </p>
+      <p>
+        {guideShown ? "Separate sheet" : document.pageName} · {formatMillimeters(pageSize.width)} ×{" "}
+        {formatMillimeters(pageSize.height)} mm
+      </p>
+    </div>
+  )
+}
+
+const navigationLabels = {
+  page: { previous: "Previous page", next: "Next page" },
+  spread: { previous: "Previous spread", next: "Next spread" },
+  physical: { previous: "Physical previous", next: "Physical next" },
+}
+
+function PreviewPageNavigation({
+  settings,
+  document,
+  currentPage,
+  onCurrentPageChange,
+  mode,
+}: Pick<
+  PreviewToolbarProps,
+  "settings" | "document" | "currentPage" | "onCurrentPageChange" | "mode"
+>) {
+  const readerOrder =
+    mode === "spread" || (mode === "physical" && isFoldedBinding(settings.binding))
+  const previousPage = readerOrder
+    ? stepReaderPose(currentPage, document.totalPages, -1)
+    : Math.max(1, currentPage - 1)
+  const nextPage = readerOrder
+    ? stepReaderPose(currentPage, document.totalPages, 1)
+    : Math.min(document.totalPages, currentPage + 1)
+  const labels = navigationLabels[readerOrder ? mode : "page"]
+  return (
+    <div className="flex items-center gap-1">
       <Button
         variant="outline"
         size="icon-sm"
-        aria-label={readerOrder ? "Physical previous" : "Previous page"}
+        className="size-11"
+        aria-label={labels.previous}
         disabled={previousPage === currentPage}
         onClick={() => onCurrentPageChange(previousPage)}
       >
@@ -268,288 +185,209 @@ function PageNavigator({
       <Button
         variant="outline"
         size="icon-sm"
-        aria-label={readerOrder ? "Physical next" : "Next page"}
+        className="size-11"
+        aria-label={labels.next}
         disabled={nextPage === currentPage}
         onClick={() => onCurrentPageChange(nextPage)}
       >
         <ArrowRight />
       </Button>
-    </>
+    </div>
   )
 }
 
-function PreviewToolbar(props: PreviewContentProps) {
-  const {
-    settings,
-    currentPage,
-    onCurrentPageChange,
-    zoom,
-    onZoomChange,
-    previewPunchGuide,
-    onPreviewPunchGuideChange,
-    document,
-    guidePreview,
-    mode,
-    onModeChange,
-    physicalPreviewSupported,
-  } = props
-  const { totalPages, pageLayout, pageSize, pageName } = document
-  const { shown: showPunchGuide, toggleLabel: guideToggleLabel } = guidePreview
-  const readerOrder = mode === "physical" && isFoldedBinding(settings.binding)
-  const previousPage = readerOrder
-    ? stepReaderPose(currentPage, totalPages, -1)
-    : Math.max(1, currentPage - 1)
-  const nextPage = readerOrder
-    ? stepReaderPose(currentPage, totalPages, 1)
-    : Math.min(totalPages, currentPage + 1)
+function PreviewToolbar(props: PreviewToolbarProps) {
+  const { settings, mode, previewPunchGuide, onPreviewPunchGuideChange } = props
+  const guide = createPunchGuideViewModel(props.document, previewPunchGuide)
   return (
-    <div className="flex h-15 shrink-0 items-center justify-between border-b bg-secondary px-5 text-secondary-foreground">
-      <ToolbarTitle
-        showPunchGuide={showPunchGuide}
-        mode={mode}
-        pageName={pageName}
-        paperSize={pageLayout.paper}
-        pageSize={pageSize}
-      />
-      <div className="flex items-center gap-2">
-        <PreviewModeSwitch
-          mode={mode}
-          physicalPreviewSupported={physicalPreviewSupported}
-          onModeChange={onModeChange}
-          onPreviewPunchGuideChange={onPreviewPunchGuideChange}
-        />
-        {mode === "2d" && <ZoomControls zoom={zoom} onZoomChange={onZoomChange} />}
+    <div className="preview-toolbar flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b bg-secondary px-3 py-2 text-secondary-foreground">
+      <PreviewModeSwitch {...props} />
+      <PreviewTitle {...props} guideShown={guide.shown} />
+      <div className="preview-toolbar-actions flex flex-wrap items-center gap-2">
+        {mode !== "physical" && (
+          <ZoomControls zoom={props.zoom} onZoomChange={props.onZoomChange} />
+        )}
         {usesSeparatePunchGuide(settings.punchHolePlacement) && (
           <Button
             variant="outline"
-            className="h-8 px-3 text-xs"
-            onClick={() => onPreviewPunchGuideChange(!previewPunchGuide)}
+            className="min-h-11 px-3 text-xs"
+            aria-pressed={guide.shown}
+            onClick={() => {
+              if (mode === "physical") props.onModeChange("page")
+              onPreviewPunchGuideChange(!guide.shown)
+            }}
           >
-            {guideToggleLabel}
+            {guide.toggleLabel}
           </Button>
         )}
-        {!showPunchGuide && (
-          <PageNavigator
-            currentPage={currentPage}
-            totalPages={totalPages}
-            previousPage={previousPage}
-            nextPage={nextPage}
-            readerOrder={readerOrder}
-            onCurrentPageChange={onCurrentPageChange}
-          />
-        )}
+        {!guide.shown && <PreviewPageNavigation {...props} />}
       </div>
     </div>
   )
 }
 
-const PreviewPage = (props: PreviewContentProps) => {
-  const {
-    settings,
-    currentPage,
-    zoom,
-    document,
-    guidePreview,
-    mode,
-    materialPreset,
-    onMaterialPresetChange,
-    opening,
-    onOpeningChange,
-  } = props
-  const { punchHoleSets, punchHolePages, pageLayout, pageSize } = document
-  const { shown: showPunchGuide, guide: punchGuide, ariaLabel: guideAriaLabel } = guidePreview
-  if (mode === "physical") {
-    return (
-      <Suspense
-        fallback={
-          <div
-            className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-primary text-primary-foreground"
-            role="status"
-          >
-            Loading Physical Design Preview…
-          </div>
-        }
-      >
-        <PhysicalDesignPreview
-          settings={settings}
-          document={document}
-          currentPage={currentPage}
-          onCurrentPageChange={props.onCurrentPageChange}
-          materialPreset={materialPreset}
-          opening={opening}
-          onMaterialPresetChange={onMaterialPresetChange}
-          onOpeningChange={onOpeningChange}
-        />
-      </Suspense>
-    )
-  }
+function usePreviewViewport() {
+  const viewportRef = useRef<HTMLElement>(null)
+  const [availableSize, setAvailableSize] = useState({ width: 0, height: 0 })
+  useLayoutEffect(() => {
+    const element = viewportRef.current
+    if (!element) return
+    const measure = () =>
+      setAvailableSize({
+        width: Math.max(0, element.clientWidth - 32),
+        height: Math.max(0, element.clientHeight - 32),
+      })
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    measure()
+    return () => observer.disconnect()
+  }, [])
+  return { viewportRef, availableSize }
+}
 
+function PunchGuidePreview({
+  document,
+  punchGuide,
+  paperColor,
+  ariaLabel,
+}: Pick<PreviewProps, "document"> & {
+  punchGuide: NonNullable<NotebookDocument["guide"]>
+  paperColor: Settings["previewPaperColor"]
+  ariaLabel: string | undefined
+}) {
+  const layout = document.pageLayout.layout
   return (
-    <div className="flex min-h-135 flex-1 overflow-auto p-4 lg:p-6 xl:min-h-0">
-      <div
-        className="preview-page-size relative m-auto shrink-0"
-        style={
-          {
-            aspectRatio: showPunchGuide
-              ? `${pageLayout.paper.width} / ${pageLayout.paper.height}`
-              : `${pageSize.width} / ${pageSize.height}`,
-            height: `min(${zoom * 0.7}vh, ${zoom * 7.4}px)`,
-            "--preview-max-height": `${zoom}%`,
-          } as CSSProperties
-        }
-      >
-        {showPunchGuide && punchGuide ? (
-          <div
-            role="img"
-            aria-label={guideAriaLabel}
-            className={`grid h-full w-full overflow-hidden bg-paper shadow-paper ${pageLayout.layout === "stacked" ? "grid-rows-2 divide-y" : pageLayout.layout === "side-by-side" ? "grid-cols-2 divide-x" : "grid-cols-1"}`}
-          >
-            {punchGuide.pages.map((page) => (
-              <div className="min-h-0 min-w-0 overflow-hidden" key={page}>
-                <PageSvg
-                  settings={punchGuide.settings}
-                  punchHoleSets={punchHoleSets}
-                  logicalPage={page}
-                  paperColor={settings.previewPaperColor}
-                  showPunchHoles
-                  className="block h-full w-full"
-                />
-              </div>
-            ))}
-          </div>
-        ) : (
+    <div
+      role="img"
+      aria-label={ariaLabel}
+      className={`grid h-full w-full overflow-hidden bg-paper ${layout === "stacked" ? "grid-rows-2 divide-y" : layout === "side-by-side" ? "grid-cols-2 divide-x" : "grid-cols-1"}`}
+    >
+      {punchGuide.pages.map((page) => (
+        <div className="min-h-0 min-w-0 overflow-hidden" key={page}>
           <PageSvg
-            settings={settings}
-            punchHoleSets={punchHoleSets}
-            logicalPage={currentPage}
-            paperColor={settings.previewPaperColor}
-            showPunchHoles={punchHolePages.has(currentPage)}
-            className="block h-full w-full shadow-paper"
-            ariaLabel="Notebook page preview"
+            settings={punchGuide.settings}
+            punchHoleSets={document.punchHoleSets}
+            logicalPage={page}
+            paperColor={paperColor}
+            showPunchHoles
+            className="block h-full w-full"
           />
-        )}
-      </div>
+        </div>
+      ))}
     </div>
   )
 }
 
-function PreviewStrip(props: PreviewContentProps) {
-  const {
-    settings,
-    currentPage,
-    onCurrentPageChange,
-    onPreviewPunchGuideChange,
-    showPlan,
-    onShowPlanChange,
-    document,
-    guidePreview,
-  } = props
-  const firstSignature = document.sides.filter((side) => side.signature === 1)
-  const pages = Array.from({ length: document.totalPages }, (_, index) => index + 1)
-  const selectPage = useCallback(
-    (page: number) => {
-      onCurrentPageChange(page)
-      onPreviewPunchGuideChange(false)
-    },
-    [onCurrentPageChange, onPreviewPunchGuideChange],
-  )
-  const overrideCounts = useMemo(() => {
-    const counts: Record<number, number> = {}
-    for (const page of Object.keys(settings.pageAppearanceOverrides)) {
-      const logicalPage = Number(page)
-      counts[logicalPage] = countPageAppearanceOverrides(
-        settings.pageAppearanceOverrides,
-        logicalPage,
-      )
-    }
-    return counts
-  }, [settings.pageAppearanceOverrides])
+function FlatPreview({
+  settings,
+  document,
+  currentPage,
+  previewPunchGuide,
+  mode,
+  zoom,
+}: Pick<
+  PreviewToolbarProps,
+  "settings" | "document" | "currentPage" | "previewPunchGuide" | "mode" | "zoom"
+>) {
+  const { viewportRef, availableSize } = usePreviewViewport()
+  const guide = createPunchGuideViewModel(document, previewPunchGuide)
+  const punchGuide = guide.guide
+  const readingPages =
+    mode === "spread" ? getReaderPose(currentPage, document.totalPages).pages : [currentPage]
+  const rightBound = settings.binding === "yotsume" && settings.bindingEdge === "right"
+  const pages = rightBound && readingPages.length === 2 ? [...readingPages].reverse() : readingPages
+  const dimensions = guide.shown
+    ? document.pageLayout.paper
+    : { width: document.pageSize.width * pages.length, height: document.pageSize.height }
+  const scale =
+    (Math.min(availableSize.width / dimensions.width, availableSize.height / dimensions.height) *
+      zoom) /
+    100
+
   return (
-    <section className="shrink-0 border-t bg-secondary px-4 py-3">
-      <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-caption font-bold uppercase tracking-label-wide text-muted-foreground">
-          {showPlan
-            ? settings.binding === "yotsume"
-              ? settings.yotsumeTwoUp
-                ? "Imposition · cut sheets"
-                : "Imposition · full sheets"
-              : "Imposition · first signature"
-            : "Pages"}
-        </h3>
-        <button
-          type="button"
-          className="flex items-center gap-1 text-caption font-semibold text-info"
-          onClick={() => onShowPlanChange(!showPlan)}
-        >
-          {showPlan ? "View pages" : "View imposition plan"}
-          <ArrowUpRight className="size-3" />
-        </button>
-      </div>
-      <div className="flex h-19 gap-2 overflow-x-auto px-0.5 py-0.5">
-        {showPlan
-          ? firstSignature.map((side: ImpositionSide) => (
-              <div
-                className="min-w-36 rounded border bg-card p-2"
-                key={`${side.sheet}-${side.side}`}
-              >
-                <span className="block text-3xs uppercase tracking-wider text-muted-foreground">
-                  Sheet {side.sheet} · {side.side}
-                </span>
-                <div
-                  className={`mt-1 grid border text-center font-serif text-xs ${side.pages.length > 1 ? "grid-cols-2 divide-x" : ""}`}
-                >
-                  {side.pages.map((page) => (
-                    <span className="py-2" key={page}>
-                      {resolvePageAppearance(settings, page).pageNumberText}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ))
-          : pages.map((page) => (
-              <PageThumbnail
+    <section
+      ref={viewportRef}
+      className="preview-canvas flex min-h-0 min-w-0 flex-1 overflow-auto p-4"
+      aria-label="Preview canvas"
+    >
+      <div
+        className="preview-page-size relative m-auto flex shrink-0 shadow-paper"
+        style={{ width: dimensions.width * scale, height: dimensions.height * scale }}
+      >
+        {guide.shown && punchGuide ? (
+          <PunchGuidePreview
+            document={document}
+            punchGuide={punchGuide}
+            paperColor={settings.previewPaperColor}
+            ariaLabel={guide.ariaLabel}
+          />
+        ) : (
+          pages.map((page) => (
+            <div className="h-full min-w-0 flex-1" key={page}>
+              <PageSvg
                 settings={settings}
+                punchHoleSets={document.punchHoleSets}
                 logicalPage={page}
-                overrideCount={overrideCounts[page] ?? 0}
-                selected={!guidePreview.shown && currentPage === page}
-                onSelect={selectPage}
-                key={page}
+                paperColor={settings.previewPaperColor}
+                showPunchHoles={document.punchHolePages.has(page)}
+                className="block h-full w-full"
+                ariaLabel={
+                  mode === "spread"
+                    ? `Notebook spread preview, page ${page}`
+                    : "Notebook page preview"
+                }
               />
-            ))}
+            </div>
+          ))
+        )}
       </div>
     </section>
   )
 }
 
-export function Preview(props: PreviewProps): ReactNode {
-  const [physicalPreviewSupported] = useState(supportsPhysicalPreview)
+export function Preview(props: PreviewProps) {
+  const [physicalPreviewSupported] = useState(() =>
+    Boolean(document.createElement("canvas").getContext("webgl2")),
+  )
   const [zoom, setZoom] = useState(100)
-  const [mode, setMode] = useState<PreviewMode>("2d")
+  const [mode, setMode] = useState<PreviewMode>("page")
   const [materialPreset, setMaterialPreset] = useState<MaterialPresetId>("everyday")
   const [opening, setOpening] = useState(65)
-  const [showPlan, setShowPlan] = useState(false)
-  const contentProps: PreviewContentProps = {
-    ...props,
-    physicalPreviewSupported,
-    zoom,
-    onZoomChange: setZoom,
-    mode,
-    onModeChange: setMode,
-    materialPreset,
-    onMaterialPresetChange: setMaterialPreset,
-    opening,
-    onOpeningChange: setOpening,
-    showPlan,
-    onShowPlanChange: setShowPlan,
-    guidePreview: createPunchGuideViewModel(props.document, props.previewPunchGuide),
-  }
   return (
-    <main className="flex min-h-175 min-w-0 flex-col bg-canvas xl:h-full xl:min-h-0 xl:overflow-hidden">
-      <PreviewToolbar {...contentProps} />
-
-      <PreviewPage {...contentProps} />
-
-      <PreviewStrip {...contentProps} />
+    <main className="preview-workspace h-full min-h-0 min-w-0 flex flex-col overflow-hidden bg-canvas">
+      <PreviewToolbar
+        {...props}
+        physicalPreviewSupported={physicalPreviewSupported}
+        zoom={zoom}
+        onZoomChange={setZoom}
+        mode={mode}
+        onModeChange={setMode}
+      />
+      {mode === "physical" ? (
+        <Suspense
+          fallback={
+            <div
+              className="flex min-h-0 flex-1 items-center justify-center bg-primary text-primary-foreground"
+              role="status"
+            >
+              Loading Physical Design Preview…
+            </div>
+          }
+        >
+          <PhysicalDesignPreview
+            settings={props.settings}
+            document={props.document}
+            currentPage={props.currentPage}
+            onCurrentPageChange={props.onCurrentPageChange}
+            materialPreset={materialPreset}
+            opening={opening}
+            onMaterialPresetChange={setMaterialPreset}
+            onOpeningChange={setOpening}
+          />
+        </Suspense>
+      ) : (
+        <FlatPreview {...props} mode={mode} zoom={zoom} />
+      )}
     </main>
   )
 }

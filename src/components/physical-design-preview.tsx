@@ -12,7 +12,7 @@ import {
 } from "@/components/physical-page-art"
 import { Button } from "@/components/ui/button"
 import type { Binding } from "@/lib/imposition"
-import type { createNotebookDocument } from "@/lib/notebook-document"
+import type { NotebookDocument } from "@/lib/notebook-document"
 import { createPageSurface, type PageSurface } from "@/lib/page-surface"
 import {
   createPhysicalPreviewModel,
@@ -683,7 +683,7 @@ function useSurfaceTextReady(activeSurfaces: ActivePageSurfaces) {
 
 function usePhysicalPreviewModel(
   settings: Settings,
-  document: ReturnType<typeof createNotebookDocument>,
+  document: NotebookDocument,
   currentPage: number,
   materialPreset: MaterialPresetId,
   opening: number,
@@ -871,7 +871,7 @@ export function PhysicalDesignPreview({
   onOpeningChange,
 }: {
   settings: Settings
-  document: ReturnType<typeof createNotebookDocument>
+  document: NotebookDocument
   currentPage: number
   materialPreset: MaterialPresetId
   opening: number

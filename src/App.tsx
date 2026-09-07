@@ -1,120 +1,85 @@
-import { Download } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
-
+import { BookOpen, PanelsTopLeft, SlidersHorizontal } from "lucide-react"
+import {
+  type CSSProperties,
+  type FocusEvent,
+  type KeyboardEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import { BookSetup } from "@/components/book-setup"
-import { SelectControl } from "@/components/form-controls"
+import { PageNavigator } from "@/components/page-navigator"
 import { PageProperties } from "@/components/page-properties"
 import { Preview } from "@/components/preview"
 import { PrintDocument } from "@/components/print-document"
-import { Button } from "@/components/ui/button"
+import { PrintPreparation } from "@/components/print-preparation"
+import { ProjectsPanel } from "@/components/projects"
+import { WorkspaceDialog } from "@/components/workspace-dialog"
+import { WorkspaceHeader } from "@/components/workspace-header"
+import type { Workspace } from "@/lib/editor-history"
 import { ensurePageNumberFontsLoaded } from "@/lib/font-loading"
 import { getPrintPages, type PrintPass } from "@/lib/imposition"
-import { createNotebookDocument, createNotebookDocumentKernel } from "@/lib/notebook-document"
+import {
+  createNotebookDocument,
+  createNotebookDocumentKernel,
+  type NotebookDocument,
+} from "@/lib/notebook-document"
 import { type PunchHolePlacement, usesSeparatePunchGuide } from "@/lib/punch-holes"
-import { initialSettings, type Settings, type SettingsUpdate } from "@/lib/settings"
+import type { Settings } from "@/lib/settings"
+import { useWorkspace } from "@/lib/use-workspace"
 
-function usePrintDialog(
-  printSettings: { settings: Settings; pass: PrintPass } | null,
-  setPrintSettings: (value: null) => void,
-) {
+type PrintSnapshot = { settings: Settings; pass: PrintPass; includeGuide: boolean }
+type MobilePanel = "pages" | "edit" | "setup"
+
+function usePrintExport(settings: Settings, notebook: NotebookDocument) {
+  const [snapshot, setSnapshot] = useState<PrintSnapshot | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const requestId = useRef(0)
   useEffect(() => {
-    if (!printSettings) return
-    const clear = () => setPrintSettings(null)
+    if (!snapshot) return
+    const clear = () => setSnapshot(null)
     const frame = requestAnimationFrame(() => window.print())
     window.addEventListener("afterprint", clear, { once: true })
     return () => {
       cancelAnimationFrame(frame)
       window.removeEventListener("afterprint", clear)
     }
-  }, [printSettings, setPrintSettings])
+  }, [snapshot])
+  async function print(pass: PrintPass, includeGuide: boolean) {
+    const request = ++requestId.current
+    setBusy(true)
+    setError(null)
+    try {
+      await ensurePageNumberFontsLoaded(
+        window.document.fonts,
+        settings,
+        getPrintPages(notebook.sides, pass),
+      )
+      if (request === requestId.current) setSnapshot({ settings, pass, includeGuide })
+    } catch (error) {
+      if (request === requestId.current)
+        setError(
+          error instanceof Error
+            ? `${error.message}. Printing was cancelled.`
+            : "Could not prepare pages. Printing was cancelled.",
+        )
+    } finally {
+      if (request === requestId.current) setBusy(false)
+    }
+  }
+  function cancel() {
+    requestId.current++
+    setSnapshot(null)
+    setBusy(false)
+    setError(null)
+  }
+  return { snapshot, busy, error, print, cancel }
 }
 
-const documentNames: Record<Settings["pattern"], string> = {
-  dots: "Dot-grid notebook",
-  cross: "Cross-grid notebook",
-  lines: "Ruled notebook",
-  grid: "Square-grid notebook",
-  graph: "Graph-paper notebook",
-  fourLine: "Four-line notebook",
-  slant: "Slant-line notebook",
-  blank: "Blank notebook",
-}
-
-type AppHeaderProps = {
-  settings: Settings
-  printPass: PrintPass
-  onPrintPassChange: (pass: PrintPass) => void
-  fontError: string | null
-  documentName: string
-  onExport: () => void
-}
-
-function AppHeader({
-  settings,
-  printPass,
-  onPrintPassChange,
-  fontError,
-  documentName,
-  onExport,
-}: AppHeaderProps) {
-  return (
-    <header className="sticky top-0 z-40 flex h-18 items-center justify-between border-b bg-background px-5 sm:px-6">
-      <div className="flex min-w-0 items-center gap-4 sm:gap-5">
-        <span
-          className="h-8.5 w-7 shrink-0 rounded-book border-2 border-foreground bg-card shadow-book"
-          aria-hidden="true"
-        />
-        <h1 className="font-serif text-display leading-none">Fold</h1>
-        <span aria-hidden="true" className="hidden h-7.5 w-px shrink-0 bg-border sm:block" />
-        <div className="hidden min-w-0 sm:block">
-          <p className="truncate text-sm font-semibold">{documentName}</p>
-          <p className="text-label text-muted-foreground">Runs entirely in your browser</p>
-        </div>
-      </div>
-      <div className="flex items-center gap-2">
-        {fontError && (
-          <p className="max-w-48 text-right text-caption text-red-700" role="alert">
-            {fontError}
-          </p>
-        )}
-        <SelectControl
-          value={printPass}
-          onChange={(value) => onPrintPassChange(value as PrintPass)}
-          options={{
-            all: "All sides",
-            fronts: "Fronts only",
-            backs: "Backs only",
-            "backs-reversed": "Backs reversed",
-            ...(usesSeparatePunchGuide(settings.punchHolePlacement) && {
-              guide: "Punch guide only",
-            }),
-          }}
-          className="w-32 bg-card"
-          ariaLabel="Print pass"
-        />
-        <Button
-          className="bg-primary px-3 hover:bg-primary-hover"
-          aria-label="Export PDF"
-          onClick={onExport}
-        >
-          <Download /> <span className="hidden sm:inline">Export PDF</span>
-        </Button>
-      </div>
-    </header>
-  )
-}
-
-function App() {
-  const [settings, setSettings] = useState(initialSettings)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [printSettings, setPrintSettings] = useState<{
-    settings: Settings
-    pass: PrintPass
-  } | null>(null)
-  const [printPass, setPrintPass] = useState<PrintPass>("all")
-  const [previewPunchGuide, setPreviewPunchGuide] = useState(false)
-  const [fontError, setFontError] = useState<string | null>(null)
-  const documentKernel = useMemo(
+function useNotebook(settings: Settings) {
+  const kernel = useMemo(
     () =>
       createNotebookDocumentKernel({
         binding: settings.binding,
@@ -133,87 +98,257 @@ function App() {
       settings.sheets,
     ],
   )
-  const document = useMemo(
-    () => createNotebookDocument(settings, documentKernel),
-    [settings, documentKernel],
-  )
+  return useMemo(() => createNotebookDocument(settings, kernel), [settings, kernel])
+}
 
-  const updateSettings: SettingsUpdate = (key, value) => {
-    setSettings((current) => ({ ...current, [key]: value }))
+function usePageSelection(totalPages: number) {
+  const [raw, setSelection] = useState({ pages: [1], currentPage: 1 })
+  const [editingDefaults, setEditingDefaults] = useState(false)
+  const selection = useMemo(() => {
+    const currentPage = Math.min(raw.currentPage, totalPages)
+    const pages = raw.pages.filter((page) => page <= totalPages)
+    return { currentPage, pages: pages.length ? pages : [currentPage] }
+  }, [raw, totalPages])
+  useEffect(() => {
+    if (selection.currentPage !== raw.currentPage || selection.pages.length !== raw.pages.length)
+      setSelection(selection)
+  }, [selection, raw])
+  function select(pages: number[], currentPage: number) {
+    setSelection({ pages, currentPage })
+    setEditingDefaults(false)
   }
+  return { ...selection, editingDefaults, setEditingDefaults, select }
+}
 
-  useEffect(
-    () => setCurrentPage((page) => Math.min(page, document.totalPages)),
-    [document.totalPages],
+function MobileNavigation({
+  active,
+  onChange,
+}: {
+  active: MobilePanel
+  onChange: (panel: MobilePanel) => void
+}) {
+  return (
+    <nav className="mobile-workspace-nav" aria-label="Workspace panels">
+      {(
+        [
+          { value: "pages", label: "Pages", icon: BookOpen },
+          { value: "edit", label: "Edit", icon: PanelsTopLeft },
+          { value: "setup", label: "Setup", icon: SlidersHorizontal },
+        ] as const
+      ).map(({ value, label, icon: Icon }) => (
+        <button
+          key={value}
+          type="button"
+          aria-pressed={active === value}
+          onClick={() => onChange(value)}
+          className={active === value ? "bg-accent text-accent-foreground" : ""}
+        >
+          <Icon className="size-4" />
+          {label}
+        </button>
+      ))}
+    </nav>
   )
-  usePrintDialog(printSettings, setPrintSettings)
+}
 
+function WorkspaceNotice({
+  error,
+  recovery,
+  onDismiss,
+}: {
+  error: string
+  recovery: string
+  onDismiss: () => void
+}) {
+  if (error)
+    return (
+      <p role="alert" className="workspace-notice text-destructive">
+        {error}
+      </p>
+    )
+  if (!recovery) return null
+  return (
+    <div className="workspace-notice">
+      <p role="status">{recovery}</p>
+      <button type="button" onClick={onDismiss}>
+        Dismiss
+      </button>
+    </div>
+  )
+}
+
+function App() {
+  const workspace = useWorkspace()
+  const { settings } = workspace
+  const notebook = useNotebook(settings)
+  const selection = usePageSelection(notebook.totalPages)
+  const printing = usePrintExport(settings, notebook)
+  const [mobilePanel, setMobilePanel] = useState<MobilePanel>("edit")
+  const [sheetHeight, setSheetHeight] = useState(48)
+  const [dialog, setDialog] = useState<"setup" | "projects" | "print" | null>(null)
+  const [previewPunchGuide, setPreviewPunchGuide] = useState(false)
+  const [noticeDismissed, setNoticeDismissed] = useState(false)
+
+  function selectPages(pages: number[], currentPage: number) {
+    workspace.endEdit()
+    selection.select(pages, currentPage)
+    setPreviewPunchGuide(false)
+  }
   function changePunchHolePlacement(placement: PunchHolePlacement) {
-    updateSettings("punchHolePlacement", placement)
-
-    const separate = usesSeparatePunchGuide(placement)
-    if (!separate && printPass === "guide") setPrintPass("all")
-    setPreviewPunchGuide(separate)
+    workspace.updateSettings("punchHolePlacement", placement)
+    setPreviewPunchGuide(usesSeparatePunchGuide(placement))
+  }
+  function openWorkspace(next: Workspace) {
+    workspace.open(next)
+    selectPages([1], 1)
+    setDialog(null)
+    setNoticeDismissed(true)
+  }
+  function openSetup() {
+    if (window.matchMedia("(min-width: 64rem)").matches) setDialog("setup")
+    else setMobilePanel("setup")
+  }
+  function closeDialog() {
+    printing.cancel()
+    setDialog(null)
+  }
+  function focusEdit(event: FocusEvent) {
+    if (["projects", "print"].includes(dialog ?? "")) return
+    if (
+      event.target instanceof HTMLTextAreaElement ||
+      (event.target instanceof HTMLInputElement &&
+        !["checkbox", "radio"].includes(event.target.type))
+    )
+      workspace.beginEdit()
+  }
+  function undoShortcut(event: KeyboardEvent) {
+    if (["projects", "print"].includes(dialog ?? "")) return
+    if (!(event.ctrlKey || event.metaKey) || event.altKey) return
+    const key = event.key.toLowerCase()
+    if (!["z", "y"].includes(key)) return
+    event.preventDefault()
+    const redo = event.shiftKey || key === "y"
+    ;(redo ? workspace.redo : workspace.undo)()
+    workspace.beginEdit()
   }
 
-  const exportPdf = async () => {
-    try {
-      await ensurePageNumberFontsLoaded(
-        window.document.fonts,
-        settings,
-        getPrintPages(document.sides, printPass),
-      )
-      setFontError(null)
-      setPrintSettings({ settings, pass: printPass })
-    } catch (error) {
-      setFontError(
-        error instanceof Error
-          ? `${error.message}. Export was cancelled.`
-          : "Could not load a page-number font. Export was cancelled.",
-      )
-    }
-  }
-
+  const setup = (
+    <BookSetup
+      settings={settings}
+      document={notebook}
+      onSettingsChange={workspace.updateSettings}
+      onPunchHolePlacementChange={changePunchHolePlacement}
+    />
+  )
   return (
     <>
-      <div className="screen-app min-h-svh bg-canvas">
-        <AppHeader
-          settings={settings}
-          printPass={printPass}
-          onPrintPassChange={setPrintPass}
-          fontError={fontError}
-          documentName={documentNames[settings.pattern]}
-          onExport={exportPdf}
+      <section
+        className="screen-app editor-app"
+        aria-label="Notebook editor"
+        data-mobile-panel={mobilePanel}
+        onFocusCapture={focusEdit}
+        onBlur={workspace.endEdit}
+        onKeyDownCapture={undoShortcut}
+      >
+        <WorkspaceHeader
+          name={workspace.name}
+          onNameChange={workspace.updateName}
+          saveStatus={workspace.saveStatus}
+          canUndo={workspace.canUndo}
+          canRedo={workspace.canRedo}
+          onUndo={workspace.undo}
+          onRedo={workspace.redo}
+          onProjects={() => setDialog("projects")}
+          onPrint={() => setDialog("print")}
         />
-        <div className="app-grid grid">
-          <BookSetup
-            settings={settings}
-            document={document}
-            onSettingsChange={updateSettings}
-            onPunchHolePlacementChange={changePunchHolePlacement}
-            onLoadProject={setSettings}
-          />
-          <Preview
-            settings={settings}
-            document={document}
-            currentPage={currentPage}
-            onCurrentPageChange={setCurrentPage}
-            previewPunchGuide={previewPunchGuide}
-            onPreviewPunchGuideChange={setPreviewPunchGuide}
-          />
-          <PageProperties
-            settings={settings}
-            currentPage={currentPage}
-            pageSize={document.pageSize}
-            printPass={printPass}
-            onSettingsChange={updateSettings}
-            onExport={exportPdf}
-          />
+        <WorkspaceNotice
+          error={workspace.storageError}
+          recovery={noticeDismissed ? "" : workspace.recoveryNotice}
+          onDismiss={() => setNoticeDismissed(true)}
+        />
+        <div
+          className="workspace-grid"
+          style={{ "--sheet-height": `${sheetHeight}%` } as CSSProperties}
+        >
+          <div className="navigator-panel workspace-sheet">
+            <PageNavigator
+              settings={settings}
+              document={notebook}
+              currentPage={selection.currentPage}
+              selectedPages={selection.pages}
+              editingDefaults={selection.editingDefaults}
+              onSelectionChange={selectPages}
+              onEditDefaults={() => {
+                workspace.endEdit()
+                selection.setEditingDefaults(true)
+                setMobilePanel("edit")
+              }}
+              onOpenSetup={openSetup}
+            />
+          </div>
+          <div className="preview-panel">
+            <Preview
+              settings={settings}
+              document={notebook}
+              currentPage={selection.currentPage}
+              onCurrentPageChange={(page) => selectPages([page], page)}
+              previewPunchGuide={previewPunchGuide}
+              onPreviewPunchGuideChange={setPreviewPunchGuide}
+            />
+          </div>
+          <div className="mobile-sheet-resizer">
+            <label htmlFor="sheet-height">Panel height</label>
+            <input
+              id="sheet-height"
+              type="range"
+              min="30"
+              max="65"
+              value={sheetHeight}
+              onChange={(event) => setSheetHeight(Number(event.target.value))}
+            />
+          </div>
+          <div className="inspector-panel workspace-sheet">
+            <PageProperties
+              settings={settings}
+              currentPage={selection.currentPage}
+              selectedPages={selection.pages}
+              editingDefaults={selection.editingDefaults}
+              pageSize={notebook.pageSize}
+              onSettingsChange={workspace.updateSettings}
+            />
+          </div>
+          {mobilePanel === "setup" && <div className="setup-panel workspace-sheet">{setup}</div>}
         </div>
-      </div>
-      {printSettings && (
-        <PrintDocument settings={printSettings.settings} pass={printSettings.pass} />
-      )}
+        <MobileNavigation active={mobilePanel} onChange={setMobilePanel} />
+        {dialog === "setup" && (
+          <WorkspaceDialog title="Notebook setup" onClose={closeDialog}>
+            {setup}
+          </WorkspaceDialog>
+        )}
+        {dialog === "projects" && (
+          <WorkspaceDialog title="Projects" onClose={closeDialog}>
+            <ProjectsPanel
+              settings={settings}
+              name={workspace.name}
+              hasChanges={workspace.hasChanges}
+              onOpen={openWorkspace}
+              onSaved={workspace.markSaved}
+            />
+          </WorkspaceDialog>
+        )}
+        {dialog === "print" && (
+          <WorkspaceDialog title="Print / PDF" className="print-dialog" onClose={closeDialog}>
+            <PrintPreparation
+              settings={settings}
+              document={notebook}
+              onPrint={printing.print}
+              busy={printing.busy}
+              error={printing.error}
+            />
+          </WorkspaceDialog>
+        )}
+      </section>
+      {printing.snapshot && <PrintDocument {...printing.snapshot} />}
     </>
   )
 }

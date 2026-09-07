@@ -2,7 +2,27 @@ import { createImposition, type ImpositionSide, isFoldedBinding } from "./imposi
 import { getPageLayout } from "./page-layout.ts"
 import { getPaperSize } from "./paper.ts"
 import { getActivePunchHoleSets, showsPunchHoles, usesSeparatePunchGuide } from "./punch-holes.ts"
-import type { Settings } from "./settings.ts"
+import type { IdentifiedHoleSet, Settings } from "./settings.ts"
+
+export interface NotebookDocumentKernel {
+  pageLayout: {
+    paper: { width: number; height: number }
+    page: { width: number; height: number }
+    layout: "side-by-side" | "stacked" | "full"
+  }
+  pageSize: { width: number; height: number }
+  sides: ImpositionSide[]
+  totalPages: number
+  signatureCount: number
+  pageName: string
+}
+
+export interface NotebookDocument extends NotebookDocumentKernel {
+  punchHoleSets: IdentifiedHoleSet[]
+  punchHolePages: Set<number>
+  guide: { settings: Settings; pages: number[] } | null
+  guideSides: number
+}
 
 function createPunchGuide(settings: Settings, sides: ImpositionSide[]) {
   const guideSettings: Settings = {
@@ -22,7 +42,9 @@ export type NotebookDocumentConstructionSettings = Pick<
   "binding" | "paper" | "yotsumeOrientation" | "yotsumeTwoUp" | "signatures" | "sheets"
 >
 
-export function createNotebookDocumentKernel(settings: NotebookDocumentConstructionSettings) {
+export function createNotebookDocumentKernel(
+  settings: NotebookDocumentConstructionSettings,
+): NotebookDocumentKernel {
   const pageLayout = getPageLayout(
     settings.paper,
     settings.binding,
@@ -57,7 +79,7 @@ export function createNotebookDocumentKernel(settings: NotebookDocumentConstruct
 export function createNotebookDocument(
   settings: Settings,
   kernel = createNotebookDocumentKernel(settings),
-) {
+): NotebookDocument {
   const separateGuide = usesSeparatePunchGuide(settings.punchHolePlacement)
   const punchHolePages = new Set<number>()
   kernel.sides.forEach((side) => {
@@ -79,10 +101,7 @@ export function createNotebookDocument(
   }
 }
 
-export function createPunchGuideViewModel(
-  document: ReturnType<typeof createNotebookDocument>,
-  shown: boolean,
-) {
+export function createPunchGuideViewModel(document: NotebookDocument, shown: boolean) {
   const showGuide = Boolean(document.guide && shown)
   return {
     guide: document.guide,

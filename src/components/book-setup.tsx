@@ -8,22 +8,21 @@ import {
   NumberField,
   SelectControl,
 } from "@/components/form-controls"
-import { ProjectsPanel } from "@/components/projects"
 import { Button } from "@/components/ui/button"
 import { TabBar, TabBarTrigger, Tabs, TabsContent } from "@/components/ui/tabs"
 import { type Binding, isFoldedBinding } from "@/lib/imposition"
-import type { createNotebookDocument } from "@/lib/notebook-document"
+import type { NotebookDocument } from "@/lib/notebook-document"
 import { getPageLayout } from "@/lib/page-layout"
 import { formatMillimeters, type Orientation, paperSizes } from "@/lib/paper"
 import type { BindingEdge, HoleGroup, PunchHolePlacement } from "@/lib/punch-holes"
 import type { Settings, SettingsUpdate } from "@/lib/settings"
+import { tropheeColors } from "@/lib/trophee-colors"
 
 export type BookSetupProps = {
   settings: Settings
-  document: ReturnType<typeof createNotebookDocument>
+  document: NotebookDocument
   onSettingsChange: SettingsUpdate
   onPunchHolePlacementChange: (placement: PunchHolePlacement) => void
-  onLoadProject: (settings: Settings) => void
 }
 
 function moveItem<T>(items: T[], from: number, to: number) {
@@ -146,6 +145,32 @@ function PaperTab({ settings, document, onSettingsChange }: BookSetupProps) {
           title="Page divider line"
           description="A thin line at the fold between the two pages of each sheet."
         />
+      </section>
+      <section className="grid gap-3 border-b p-5">
+        <label htmlFor="preview-paper-color" className="text-sm font-medium">
+          Preview paper color
+        </label>
+        <div className="flex items-center gap-3">
+          <span
+            className="size-8 shrink-0 rounded border"
+            style={{ backgroundColor: settings.previewPaperColor }}
+            aria-hidden="true"
+          />
+          <SelectControl
+            id="preview-paper-color"
+            value={settings.previewPaperColor}
+            onChange={(value) => onSettingsChange("previewPaperColor", value)}
+            options={Object.fromEntries(
+              [{ name: "White (default)", hex: "#fffef9" }, ...tropheeColors].map((color) => [
+                color.hex,
+                color.name,
+              ]),
+            )}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Clairefontaine Trophée screen swatches. Preview only; PDF pages stay white.
+        </p>
       </section>
     </TabsContent>
   )
@@ -455,34 +480,23 @@ function HolesTab({
   )
 }
 
-function ProjectsTab({ settings, onLoadProject }: BookSetupProps) {
-  return (
-    <TabsContent value="projects" className="mt-0">
-      <ProjectsPanel settings={settings} onLoad={onLoadProject} />
-    </TabsContent>
-  )
-}
-
 export function BookSetup(props: BookSetupProps): ReactNode {
   const { sides, totalPages, guideSides } = props.document
   return (
-    <aside className="border-b bg-background lg:border-r lg:border-b-0 xl:h-full xl:overflow-y-auto">
+    <aside className="bg-background">
       <div className="px-5 pt-5 pb-2">
-        <h2 className="font-serif text-heading">Book setup</h2>
-        <p className="mt-1 text-label leading-4 text-muted-foreground">
-          Choose a binding, then tune the construction.
+        <h3 className="font-serif text-heading">Construction</h3>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Choose your binding and paper. Page styles and content are kept.
         </p>
       </div>
 
       <Tabs defaultValue="binding" className="gap-0">
         <TabBar>
-          <TabBarTrigger value="projects">PROJECT</TabBarTrigger>
           <TabBarTrigger value="binding">BINDING</TabBarTrigger>
           <TabBarTrigger value="paper">PAPER</TabBarTrigger>
           <TabBarTrigger value="holes">HOLES</TabBarTrigger>
         </TabBar>
-
-        <ProjectsTab {...props} />
 
         <PaperTab {...props} />
 
@@ -508,7 +522,10 @@ export function BookSetup(props: BookSetupProps): ReactNode {
 
       <div className="flex gap-2 px-5 py-4 text-caption leading-4 text-muted-foreground">
         <Info className="mt-0.5 size-3.5 shrink-0 text-info" />
-        <p>Changing paper keeps your page style and recalculates the imposition.</p>
+        <p>
+          Changing paper recalculates printing without changing page styles. Reducing page count
+          hides pages beyond the new end; increase it again to restore them.
+        </p>
       </div>
     </aside>
   )
